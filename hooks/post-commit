@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+readonly SIGNING_BRANCH_PREFIX=$(git config ts.branch.prefix)
+if [ $? -ne 0 ]; then
+  echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
+  exit 2
+fi
+
+COMMIT_ID=$(git rev-parse HEAD)
+
+BRANCH=$(git symbolic-ref --short HEAD)
+if [ $? -ne 0 ]; then
+  BRANCH=$(git config init.defaultBranch)
+  if [ $? -ne 0 ]; then
+    BRANCH="master"
+  fi
+fi
+
+if [[ ${BRANCH} == ${SIGNING_BRANCH_PREFIX}/* ]]; then
+  exit 0
+elif [[ "${BRANCH}" == "${SIGNING_BRANCH_PREFIX}" ]]; then
+  exit 255
+else
+  SIGNING_BRANCH="${SIGNING_BRANCH_PREFIX}/${BRANCH}"
+
+  if git rev-parse --verify "${SIGNING_BRANCH}"; then
+    git checkout "${SIGNING_BRANCH}"
+  else
+    git checkout --orphan "${SIGNING_BRANCH}"
+  fi
+
+  git merge -s ours "${COMMIT_ID}"
+fi
+
+git checkout "${BRANCH}"

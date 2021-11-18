@@ -1,0 +1,243 @@
+#!/usr/bin/env bash
+
+if [ $# -eq 0 ] ; then
+	echo 'Call this script only through "git commit".'
+	exit 4
+fi
+
+# Preset return value to OK
+RETURN=0
+
+TS_ENABLED=$(git config --get ts.enabled)
+
+# Quit if timestamping is not configured
+if [ $? -ne 0 ] ; then
+	exit 0
+fi
+
+# Quit if timestamping is not enabled
+if [ "${TS_ENABLED}" != "true" ] ; then
+	exit 0
+fi
+
+readonly SIGNING_BRANCH_PREFIX=$(git config ts.branch.prefix)
+if [ $? -ne 0 ] ; then
+	echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
+	RETURN=2
+fi
+readonly SIGNING_COMMIT_PREFIX=$(git config ts.commit.prefix)
+if [ $? -ne 0 ] ; then
+	echo 'Run "git config ts.commit.prefix" to set the signing commit message prefix'
+	RETURN=2
+fi
+
+readonly DIFF_NOTICE=$(git config ts.diff.notice)
+if [ $? -ne 0 ] ; then
+	echo 'Run "git config ts.diff.notice" to set the notice in the diff header'
+	RETURN=2
+fi
+readonly DIFF_FILE=$(git config ts.diff.file)
+if [ $? -ne 0 ] ; then
+	echo 'run "git config ts.diff.file" to set the name of the generated diff file'
+	RETURN=2
+fi
+readonly DIFF_TYPE=$(git config ts.diff.type)
+if [ $? -ne 0 ] ; then
+	echo 'run "git config ts.diff.type" to set how the diff is created'
+	RETURN=2
+fi
+
+readonly TS_SERVER_CONFIG_DIR=$(git config ts.server.directory)
+if [ $? -ne 0 ] ; then
+	echo 'Run "git config ts.server.directory" to set the directory name of the the timestamping server configs'
+	RETURN=2
+fi
+readonly TS_SERVER_URL_FILE=$(git config ts.server.url)
+if [ $? -ne 0 ] ; then
+	echo 'Run "git config ts.server.url" to set the name of the file containing the timestamping server url'
+	RETURN=2
+fi
+readonly TS_SERVER_CACERT_FILE=$(git config ts.server.certificate)
+if [ $? -ne 0 ] ; then
+	echo 'Run "git config ts.server.certificate" to set the name of the timestamping server certificate file'
+	RETURN=2
+fi
+
+readonly TS_REQUEST_FILE=$(git config ts.request.file)
+if [ $? -ne 0 ] ; then
+	echo 'Run "git config ts.request.file" to set the name of the timestamp request file'
+	RETURN=2
+fi
+readonly TS_REQUEST_OPTIONS=$(git config ts.request.options)
+if [ $? -ne 0 ] ; then
+	echo 'Run "git config ts.request.options" to set the options for creating the timestamp request file'
+	RETURN=2
+fi
+
+readonly TS_RESPONSE_FILE=$(git config ts.respone.file)
+if [ $? -ne 0 ] ; then
+	echo 'Run "git config ts.response.file" to set the name of the timestamp response file'
+	RETURN=2
+fi
+readonly TS_RESPONSE_OPTIONS=$(git config ts.respone.options)
+if [ $? -ne 0 ] ; then
+	echo 'Run "git config ts.response.options" to set the options for curling the timestamp response file'
+	RETURN=2
+fi
+readonly TS_RESPONSE_VERIFY=$(git config ts.respone.verify)
+if [ $? -ne 0 ] ; then
+	echo 'Run "git config ts.response.verify" to set whether the timestamp response file is verified after'
+	RETURN=2
+fi
+
+# Return if a required config is missing
+if [[ ${RETURN} -ne 0 ]] ; then
+	exit ${RETURN}
+fi
+
+# Get current branch
+BRANCH=$(git symbolic-ref --short HEAD)
+if [ $? -ne 0 ] ; then
+	BRANCH=$(git config init.defaultBranch)
+	if [ $? -ne 0 ] ; then
+		BRANCH="master"
+	fi
+fi
+
+# Return if already on signing branch
+if [[ ${BRANCH} == ${SIGNING_BRANCH_PREFIX}/* ]] ; then
+	exit 0
+fi
+
+# Hash of the empty tree object
+EMPTY=$(git hash-object -t tree /dev/null)
+
+# Commit ID of the root commit of HEAD
+ROOT=$(git rev-list --max-parents=0 HEAD)
+
+# Commit ID of the immediate parent of HEAD
+HEAD=$(git rev-parse HEAD)
+
+# Get signing branch name
+SIGNING_BRANCH="${SIGNING_BRANCH_PREFIX}/${BRANCH}"
+
+# Get applicable diff of staged files
+DIFF=""
+
+if [[ "${DIFF_TYPE}" == "staged" ]] ; then
+	DIFF=$(git diff --staged --full-index --binary)
+elif [[  "${DIFF_TYPE}" == "full" ]] ; then
+	DIFF=$(git diff --staged --full-index --binary "$(git hash-object -t tree /dev/null)")
+else
+	echo 'ERROR: ts.diff.type must be either "staged" or "full"'
+	exit 3
+fi
+
+# Get commit message
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "${COMMIT_MSG_FILE}")
+
+# ---BEGIN DEBUG BLOCK---
+# echo "BRANCH=${BRANCH}"
+# echo "EMPTY=${EMPTY}"
+# echo "ROOT=${ROOT}"
+# echo "HEAD=${HEAD}"
+# echo "SIGNING_BRANCH=${SIGNING_BRANCH}"
+# echo "COMMIT_MSG_FILE=${COMMIT_MSG_FILE}"
+# echo "COMMIT_MSG=${COMMIT_MSG}"
+# ---END DEBUG BLOCK---
+
+# Stash changes to be committed
+git stash
+
+# Create signing branch if non-existent
+if git rev-parse --verify "${SIGNING_BRANCH}" ; then
+	git checkout "${SIGNING_BRANCH}"
+else
+	git checkout --orphan "${SIGNING_BRANCH}"
+fi
+
+# Write diff file
+echo "${DIFF_NOTICE}" > "${DIFF_FILE}"
+echo "${DIFF}" >> "${DIFF_FILE}"
+
+SIG_COUNT=0
+
+# Loop for each timestamping server
+for d in "${TS_SERVER_CONFIG_DIR}"/*/ ; do
+	# Get timestamp server URL
+	TS_SERVER_URL=${d#*${TS_SERVER_CONFIG_DIR}/}
+	TS_SERVER_URL=${TS_SERVER_URL%/*}
+
+	if [[ "${TS_SERVER_URL}" == "*" ]] ; then
+		break
+	fi
+
+	if [[ -d "${d}/${TS_SERVER_URL_FILE}" ]] ; then
+		TS_SERVER_URL=$(cat "${d}/${TS_SERVER_URL_FILE}")
+		echo "Using URL from file"
+	fi
+
+	# ---BEGIN DEBUG BLOCK---
+	# echo "d=${d}"
+	# echo "TS_SERVER_URL=${TS_SERVER_URL}"
+	# ---END DEBUG BLOCK---
+
+	# Create timestamp request
+	openssl ts -query -data "${DIFF_FILE}" ${TS_REQUEST_OPTIONS} -out ${d}/${TS_REQUEST_FILE}
+
+	# Get timestamp response
+	curl -s -S -H 'Content-Type: application/timestamp-query' ${TS_RESPONSE_OPTIONS} --data-binary "@${d}/${TS_REQUEST_FILE}" "http://${TS_SERVER_URL}" -o "${d}/${TS_RESPONSE_FILE}"
+
+  # Run verifications if set
+	if [[ "${TS_RESPONSE_VERIFY}" == "true" ]] ; then
+		# Verify timestamp against request
+		if ! openssl ts -verify -in "${d}/${TS_RESPONSE_FILE}" -queryfile "${d}/${TS_REQUEST_FILE}" -CAfile "${d}/${TS_SERVER_CACERT_FILE}" ; then
+			RETURN=1
+			echo "ERROR: Timestamp from server ${TS_SERVER_URL} could not be verified against request!"
+			break
+		fi
+
+		# Verify timestamp against data
+		if ! openssl ts -verify -in "${d}/${TS_RESPONSE_FILE}" -data "${DIFF_FILE}" -CAfile "${d}/${TS_SERVER_CACERT_FILE}" ; then
+			RETURN=1
+			echo "ERROR: Timestamp from server ${TS_SERVER_URL} could not be verified against diff!"
+			break
+		fi
+	fi
+
+	SIG_COUNT=$((SIG_COUNT+1))
+done
+
+# ---BEGIN DEBUG BLOCK---
+# echo "SIG_COUNT=${SIG_COUNT}"
+# ---END DEBUG BLOCK---
+
+# Check if any signature was generated
+if [[ ${SIG_COUNT} -gt 0 ]] ; then
+	if [[ ${RETURN} -eq 0 ]] ; then
+		# Add timestamp files to stage
+		git add --force "${DIFF_FILE}" ${TS_SERVER_CONFIG_DIR}/*
+
+		# Commit timestamp files
+		git commit -m "${SIGNING_COMMIT_PREFIX}${COMMIT_MSG}"
+	fi
+fi
+
+# Checkout original branch
+if git rev-parse --verify "${BRANCH}" ; then
+	git checkout "${BRANCH}"
+else
+	git checkout --orphan "${BRANCH}"
+fi
+
+# Restore original commit message
+echo "${COMMIT_MSG}" > "${COMMIT_MSG_FILE}"
+
+# Unstash changes to be committed
+git stash pop
+
+# Wait one second for different commit timestamps
+sleep 1s
+
+exit ${RETURN}
