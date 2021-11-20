@@ -1,35 +1,52 @@
 #!/usr/bin/env bash
 
-readonly SIGNING_BRANCH_PREFIX=$(git config ts.branch.prefix)
-if [ $? -ne 0 ]; then
-  echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
-  exit 2
-fi
+function hook_echo() {
+	echo -e "[\e[0;32mpost-commit\e[0m]: $1"
+}
 
-COMMIT_ID=$(git rev-parse HEAD)
+function relate_commits() {
+	readonly TS_BRANCH_PREFIX=$(git config ts.branch.prefix)
+	if [ $? -ne 0 ]; then
+		echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
+		exit 2
+	fi
 
-BRANCH=$(git symbolic-ref --short HEAD)
-if [ $? -ne 0 ]; then
-  BRANCH=$(git config init.defaultBranch)
-  if [ $? -ne 0 ]; then
-    BRANCH="master"
-  fi
-fi
+	BRANCH=$(git symbolic-ref --short HEAD)
+	if [ $? -ne 0 ]; then
+		BRANCH=$(git config init.defaultBranch)
+		if [ $? -ne 0 ]; then
+			BRANCH="master"
+		fi
+	fi
 
-if [[ ${BRANCH} == ${SIGNING_BRANCH_PREFIX}/* ]]; then
-  exit 0
-elif [[ "${BRANCH}" == "${SIGNING_BRANCH_PREFIX}" ]]; then
-  exit 255
-else
-  SIGNING_BRANCH="${SIGNING_BRANCH_PREFIX}/${BRANCH}"
+	if [[ ${BRANCH} == ${TS_BRANCH_PREFIX}/* ]]; then
+		exit 0
+	elif [[ "${BRANCH}" == "${TS_BRANCH_PREFIX}-" ]]; then
+		exit 255
+	elif [[ -f "${GIT_DIR}/TIMESTAMP" ]]; then
+		COMMIT_ID=$(git rev-parse HEAD)
+		hook_echo "Commit ID is ${COMMIT_ID}"
 
-  if git rev-parse --verify "${SIGNING_BRANCH}"; then
-    git checkout "${SIGNING_BRANCH}"
-  else
-    git checkout --orphan "${SIGNING_BRANCH}"
-  fi
+		SIGNING_BRANCH="${TS_BRANCH_PREFIX}/${BRANCH}"
 
-  git merge -s ours "${COMMIT_ID}"
-fi
+		if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
+			hook_echo "Checking out signing branch"
+			git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
 
-git checkout "${BRANCH}"
+			hook_echo "Merging ${BRANCH} into ${SIGNING_BRANCH}"
+			git merge \
+				--allow-unrelated-histories \
+				--strategy ours \
+				-m "Relate commit '${COMMIT_ID}' to ${SIGNING_BRANCH}" "${COMMIT_ID}" \
+				>/dev/null
+			rm "${GIT_DIR}/TIMESTAMP" >/dev/null
+		else
+			hook_echo "Checking out new signing branch"
+			git checkout --orphan "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
+		fi
+	fi
+
+	git checkout "${BRANCH}" >/dev/null 2>/dev/null
+}
+
+relate_commits
