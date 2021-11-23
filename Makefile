@@ -3,6 +3,9 @@
 test:
 	./test/test.sh
 
+reapply:
+	./test/reapply.sh
+
 all: test
 
 clean_test:

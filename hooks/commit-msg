@@ -145,7 +145,7 @@ function generate_timestamps() {
 	SIGNING_BRANCH="${TS_BRANCH_PREFIX}/${BRANCH}"
 
 	# Get applicable diff of staged files
-	DIFF=""
+	local DIFF=""
 
 	hook_echo "Creating diff"
 	if [[ "${TS_DIFF_TYPE}" == "staged" ]]; then
@@ -178,56 +178,8 @@ function generate_timestamps() {
 	echo "${DIFF}" >>"${TS_DIFF_FILE}"
 	echo "" >>"${TS_DIFF_FILE}"
 
-	local SIG_COUNT=0
-
-	# Loop for each timestamping server
-	for d in "${TS_SERVER_DIRECTORY}"/*/; do
-		# Get timestamp server URL
-		TS_SERVER_URL=${d#*${TS_SERVER_DIRECTORY}/}
-		TS_SERVER_URL=${TS_SERVER_URL%/*}
-
-		if [[ "${TS_SERVER_URL}" == "*" ]]; then
-			break
-		fi
-
-		TS_SERVER_DIR="${TS_SERVER_URL}"
-		if [[ -d "${d}/${TS_SERVER_URL}" ]]; then
-			TS_SERVER_URL=$(cat "${d}/${TS_SERVER_URL}")
-		else
-			TS_SERVER_URL="http://${TS_SERVER_URL}"
-		fi
-		hook_echo "Generating timestamp for ${TS_SERVER_DIR} at ${TS_SERVER_URL}"
-
-		if create_timestamp "${TS_DIFF_FILE}" "${d}" ${TS_SERVER_URL}; then
-			SIG_COUNT=$((SIG_COUNT + 1))
-		else
-			RETURN=1
-		fi
-	done
-
-	# Check if any signature was generated
-	if [[ ${SIG_COUNT} -gt 0 ]] && [[ ${RETURN} -eq 0 ]]; then
-		# Checkout signing branch
-		if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
-			git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
-		else
-			git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
-		fi
-
-		# Add timestamp files to stage
-		hook_echo "Committing timestamps"
-		git add --force -- "${TS_DIFF_FILE}" ${TS_SERVER_DIRECTORY}/* >/dev/null 2>/dev/null
-
-		# Commit timestamp files
-		git commit \
-			-m "${TS_COMMIT_PREFIX}${COMMIT_MSG}" \
-			-- "${TS_DIFF_FILE}" "./${TS_SERVER_DIRECTORY}/" \
-			>/dev/null 2>/dev/null
-		touch "${GIT_DIR}/TIMESTAMP"
-	else
-		hook_echo "No timestamps to commit"
-		rm "${TS_DIFF_FILE}" >/dev/null
-	fi
+	create_and_commit_timestamps
+	RETURN=$?
 
 	# Checkout original branch
 	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
@@ -239,8 +191,8 @@ function generate_timestamps() {
 	fi
 
 	# Remove timestamping files
-	rm -rf "${TS_SERVER_DIRECTORY:?}/"
-	git reset -- ${TS_SERVER_DIRECTORY:?}/* >/dev/null 2>/dev/null
+	rm -rf "${TS_SERVER_DIRECTORY:?}/" "${TS_DIFF_FILE}" ".gitattributes"
+	git reset -- ${TS_SERVER_DIRECTORY:?}/* "${TS_DIFF_FILE}" ".gitattributes" >/dev/null 2>/dev/null
 
 	# Restore original commit message
 	echo "${COMMIT_MSG}" >"${COMMIT_MSG_FILE}"

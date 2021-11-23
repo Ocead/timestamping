@@ -4,13 +4,14 @@ function hook_echo() {
 	echo -e "[\e[0;32mpost-commit\e[0m]: $1"
 }
 
-function relate_commits() {
-	readonly TS_BRANCH_PREFIX=$(git config ts.branch.prefix)
+function relate_timestamps() {
+	TS_BRANCH_PREFIX=$(git config ts.branch.prefix)
 	if [ $? -ne 0 ]; then
 		echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
 		exit 2
 	fi
 
+	local BRANCH
 	BRANCH=$(git symbolic-ref --short HEAD)
 	if [ $? -ne 0 ]; then
 		BRANCH=$(git config init.defaultBranch)
@@ -22,31 +23,44 @@ function relate_commits() {
 	if [[ ${BRANCH} == ${TS_BRANCH_PREFIX}/* ]]; then
 		exit 0
 	elif [[ "${BRANCH}" == "${TS_BRANCH_PREFIX}-" ]]; then
-		exit 255
+		TS_SERVER_DIRECTORY=$(git config ts.server.directory)
+		TS_SERVER_CERTIFICATE=$(git config ts.server.certificate)
+
+		COMMIT_ID=$(git rev-parse HEAD)
+		update_timestamps "${COMMIT_ID}" "${BRANCH}"
 	elif [[ -f "${GIT_DIR}/TIMESTAMP" ]]; then
 		COMMIT_ID=$(git rev-parse HEAD)
 		hook_echo "Commit ID is ${COMMIT_ID}"
 
-		SIGNING_BRANCH="${TS_BRANCH_PREFIX}/${BRANCH}"
+		local SIGNING_BRANCH="${TS_BRANCH_PREFIX}/${BRANCH}"
 
 		if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
 			hook_echo "Checking out signing branch"
-			git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
+
+			local STASH
+			maybe_stash
+			STASH=$?
+			git checkout "${SIGNING_BRANCH}"
 
 			hook_echo "Merging ${BRANCH} into ${SIGNING_BRANCH}"
 			git merge \
 				--allow-unrelated-histories \
 				--strategy ours \
-				-m "Relate commit '${COMMIT_ID}' to ${SIGNING_BRANCH}" "${COMMIT_ID}" \
-				>/dev/null
-			rm "${GIT_DIR}/TIMESTAMP" >/dev/null
+				--message "Relate commit '${COMMIT_ID}' to ${SIGNING_BRANCH}" \
+				"${COMMIT_ID}"
+			rm "${GIT_DIR}/TIMESTAMP"
+
+			git checkout "${BRANCH}" >/dev/null 2>/dev/null
+
+			maybe_unstash ${STASH}
 		else
 			hook_echo "Checking out new signing branch"
 			git checkout --orphan "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
 		fi
 	fi
-
-	git checkout "${BRANCH}" >/dev/null 2>/dev/null
 }
 
-relate_commits
+# shellcheck source=timestamping.sh
+source "$(dirname "$(realpath "$0")")/timestamping.sh"
+
+relate_timestamps

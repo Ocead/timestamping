@@ -152,6 +152,11 @@ function install_timestamping() {
 			exit 1
 		fi
 
+		if ! git diff --exit-code >/dev/null 2>/dev/null; then
+			git status
+			script_echo "ERROR: You have local uncommitted changes. Please commit or reset them before installing."
+		fi
+
 		if [[ ${OPT_DEFAULT} == false ]]; then
 			prompt_options
 		fi

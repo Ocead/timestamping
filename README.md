@@ -215,7 +215,7 @@ git config <option> "<value>"
 |`ts.diff.notice`|Text added to the start of the timestamped diff files.|`"Written by $(git config --get user.name)"`|
 |`ts.diff.file`|Name of the generated diff file|`".diff"`|
 |`ts.diff.type`|Type of diff to be created.<br/>May either be:<br/>`"staged"` for diffs to HEAD, or <br/>`"full"` for diffs to the empty tree object.|`"staged"`|
-|`ts.server.directory`|The directory containing the timestamp server configurations relative to `$GIT_DIR`.|`"rfc3161"`|
+|`ts.server.directory`|The directory containing the timestamp server configurations relative to the repositories root directory.|`"rfc3161"`|
 |`ts.server.url`|Name of the file containing the url of the timestamp server.|`"url"`|
 |`ts.server.certificate`|Name of the key chain file for a single timestamp server.|`"cacert.pem"`|
 |`ts.request.file`|Name of the generated timestamp request file.|`"request.tsq"`|
@@ -234,9 +234,9 @@ git config <option> "<value>"
 * [x] Choice between cached and full diffs
 * [x] Custom timestamp response options
 * [x] Referencing actual commits in timestamping branches
+* [x] Automatically redoing timestamps upon configuration changes
 * [ ] TSA-specific/dynamic data providers
 * [ ] Trusted timestamps after commits
-* [ ] Automatically redoing timestamps upon configuration changes
 
 ## License
 

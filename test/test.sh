@@ -15,25 +15,32 @@ function add_tsa() {
 	git commit -m "Added simple TSA" "./rfc3161/zeitstempel.dfn.de/cacert.pem"
 
 	# Checkout original branch
-  if git rev-parse --verify "master" >/dev/null 2>/dev/null; then
-  	git checkout "master" >/dev/null 2>/dev/null
-  else
-  	git checkout --orphan "master" >/dev/null 2>/dev/null
-  	git rm -rf ./rfc3161/* >/dev/null 2>/dev/null
-  fi
+	if git rev-parse --verify "master" >/dev/null 2>/dev/null; then
+		git checkout "master" >/dev/null 2>/dev/null
+	else
+		git checkout --orphan "master" >/dev/null 2>/dev/null
+		git rm -rf ./rfc3161/* ".gitattributes" >/dev/null 2>/dev/null
+	fi
+}
+
+# Verifies the repository before first actual commit
+function verify_zeroth() {
+	! test -f .gitattributes || echo_error "0: .gitattributes should not exist."
 }
 
 # Verifies the repository after first actual commit
 function verify_first() {
 	git checkout "master" >/dev/null 2>/dev/null
-	! test -d rfc3161 || echo_error "rfc3161/ should not exist."
-	! test -f .diff || echo_error ".diff should not exist."
-	test -f a.txt || echo_error "a.txt should exist."
+	! test -d rfc3161 || echo_error "1: rfc3161/ should not exist."
+	! test -f .diff || echo_error "1: .diff should not exist."
+	test -f a.txt || echo_error "1: a.txt should exist."
+	! test -f .gitattributes || echo_error "1: .gitattributes should not exist."
 
 	if git rev-parse --verify "sig/master" >/dev/null 2>/dev/null; then
 		git checkout "sig/master" >/dev/null 2>/dev/null
-		test -d rfc3161/ || echo_error "rfc3161/ should exist."
-		! test -f a.txt 2>/dev/null || echo_error "a.txt should not exist."
+		test -d rfc3161/ || echo_error 1: 1: "rfc3161/ should exist."
+		! test -f a.txt 2>/dev/null || echo_error "1: a.txt should not exist."
+		test -f .gitattributes || echo_error "1: .gitattributes should exist."
 	fi
 
 	git checkout "master" >/dev/null 2>/dev/null
@@ -42,16 +49,18 @@ function verify_first() {
 # Verifies the repository after second actual commit
 function verify_second() {
 	git checkout "master" >/dev/null 2>/dev/null
-	! test -d rfc3161 || echo_error "rfc3161/ should not exist."
-	! test -f .diff || echo_error ".diff should not exist."
-	test -f a.txt || echo_error "a.txt should exist."
-	test -f b.txt || echo_error "b.txt should exist."
+	! test -d rfc3161 || echo_error "2: rfc3161/ should not exist."
+	! test -f .diff || echo_error "2: .diff should not exist."
+	test -f a.txt || echo_error "2: a.txt should exist."
+	test -f b.txt || echo_error "2: b.txt should exist."
+	! test -f .gitattributes || echo_error "2: .gitattributes should not exist."
 
 	if git rev-parse --verify "sig/master" >/dev/null 2>/dev/null; then
 		git checkout "sig/master" >/dev/null 2>/dev/null
-		test -d rfc3161/ || echo_error "rfc3161/ should exist."
-		! test -f a.txt 2>/dev/null || echo_error "a.txt should not exist."
-		! test -f b.txt 2>/dev/null || echo_error "b.txt should not exist."
+		test -d rfc3161/ || echo_error "2: rfc3161/ should exist."
+		! test -f a.txt 2>/dev/null || echo_error "2: a.txt should not exist."
+		! test -f b.txt 2>/dev/null || echo_error "2: b.txt should not exist."
+		test -f .gitattributes || echo_error "2: .gitattributes should exist."
 	fi
 
 	git checkout "master" >/dev/null 2>/dev/null
@@ -68,6 +77,8 @@ git --git-dir="${REPO_PATH}/.git" init
 ./config.sh -d "${REPO_PATH}"
 (
 	cd "${REPO_PATH}" || exit 255
+	verify_zeroth
+
 	add_tsa
 	echo "Gnampf" >"./a.txt"
 	git add "./a.txt" >/dev/null 2>/dev/null
@@ -95,6 +106,8 @@ git --git-dir="${REPO_PATH}/.git" init
 ./config.sh --default "${REPO_PATH}"
 (
 	cd "${REPO_PATH}" || exit 255
+	verify_zeroth
+
 	add_tsa
 	git add "./a.txt"
 	git commit -m "Initial commit"
@@ -122,6 +135,8 @@ git --git-dir="${REPO_PATH}/.git" init
 ./config.sh -d "${REPO_PATH}"
 (
 	cd "${REPO_PATH}" || exit 255
+	verify_zeroth
+
 	add_tsa
 	git commit -m "Initial commit"
 
@@ -149,6 +164,8 @@ git --git-dir="${REPO_PATH}/.git" init
 ./config.sh --default "${REPO_PATH}"
 (
 	cd "${REPO_PATH}" || exit 255
+	verify_zeroth
+
 	add_tsa
 
 	verify_first
@@ -177,12 +194,12 @@ git --git-dir="${REPO_PATH}/.git" init
 ./config.sh --default "${REPO_PATH}"
 (
 	cd "${REPO_PATH}" || exit 255
+	verify_zeroth
+
 	add_tsa
 
 	verify_first
 	test -f b.txt || echo_error "b.txt should exist."
-
-
 
 	echo "Schnampf" >"./b.txt"
 	git add "./b.txt"
