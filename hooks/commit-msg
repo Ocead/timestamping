@@ -9,118 +9,10 @@ if [ $# -eq 0 ]; then
 	exit 4
 fi
 
-# shellcheck source=timestamping.sh
-source "$(dirname "$(realpath "$0")")/timestamping.sh"
-
 function generate_timestamps() {
-
-	# Preset return value to OK
-	local RETURN=0
-
-	local TS_ENABLED
-	TS_ENABLED=$(git config --get ts.enabled)
-
 	# Quit if timestamping.sh is not configured
 	if [ $? -ne 0 ]; then
 		exit 0
-	fi
-
-	# Quit if timestamping.sh is not enabled
-	if [ "${TS_ENABLED}" != "true" ]; then
-		exit 0
-	fi
-
-	local TS_BRANCH_PREFIX
-	local TS_COMMIT_PREFIX
-
-	local TS_DIFF_NOTICE
-	local TS_DIFF_FILE
-	local TS_DIFF_TYPE
-
-	local TS_SERVER_DIRECTORY
-	local TS_SERVER_URL
-	local TS_SERVER_CERTIFICATE
-
-	local TS_REQUEST_FILE
-	local TS_REQUEST_OPTIONS
-
-	local TS_RESPONSE_FILE
-	local TS_RESPONSE_OPTIONS
-	local TS_RESPONSE_VERIFY
-
-	TS_BRANCH_PREFIX=$(git config ts.branch.prefix)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
-		RETURN=2
-	fi
-	TS_COMMIT_PREFIX=$(git config ts.commit.prefix)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.commit.prefix" to set the signing commit message prefix'
-		RETURN=2
-	fi
-
-	TS_DIFF_NOTICE=$(git config ts.diff.notice)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.diff.notice" to set the notice in the diff header'
-		RETURN=2
-	fi
-	TS_DIFF_FILE=$(git config ts.diff.file)
-	if [ $? -ne 0 ]; then
-		echo 'run "git config ts.diff.file" to set the name of the generated diff file'
-		RETURN=2
-	fi
-	TS_DIFF_TYPE=$(git config ts.diff.type)
-	if [ $? -ne 0 ]; then
-		echo 'run "git config ts.diff.type" to set how the diff is created'
-		RETURN=2
-	fi
-
-	TS_SERVER_DIRECTORY=$(git config ts.server.directory)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.server.directory" to set the directory name of the the timestamping.sh server configs'
-		RETURN=2
-	fi
-	TS_SERVER_URL=$(git config ts.server.url)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.server.url" to set the name of the file containing the timestamping.sh server url'
-		RETURN=2
-	fi
-	TS_SERVER_CERTIFICATE=$(git config ts.server.certificate)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.server.certificate" to set the name of the timestamping.sh server certificate file'
-		RETURN=2
-	fi
-
-	TS_REQUEST_FILE=$(git config ts.request.file)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.request.file" to set the name of the timestamp request file'
-		RETURN=2
-	fi
-	TS_REQUEST_OPTIONS=$(git config ts.request.options)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.request.options" to set the options for creating the timestamp request file'
-		RETURN=2
-	fi
-
-	TS_RESPONSE_FILE=$(git config ts.respone.file)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.response.file" to set the name of the timestamp response file'
-		RETURN=2
-	fi
-	TS_RESPONSE_OPTIONS=$(git config ts.respone.options)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.response.options" to set the options for curling the timestamp response file'
-		RETURN=2
-	fi
-	TS_RESPONSE_VERIFY=$(git config ts.respone.verify)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.response.verify" to set whether the timestamp response file is verified after'
-		RETURN=2
-	fi
-
-	# Return if a required config is missing
-	if [[ ${RETURN} -ne 0 ]]; then
-		exit ${RETURN}
 	fi
 
 	# Get current branch
@@ -206,4 +98,7 @@ function generate_timestamps() {
 	exit ${RETURN}
 }
 
-generate_timestamps $1
+# shellcheck source=timestamping.sh
+source "$(dirname "$(realpath "$0")")/timestamping.sh"
+
+if_enabled in_environment generate_timestamps $1

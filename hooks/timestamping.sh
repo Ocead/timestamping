@@ -1,5 +1,126 @@
 #!/usr/bin/env bash
 
+# region Environment setup
+function if_enabled() {
+	local TS_ENABLED
+	TS_ENABLED=$(git config --get ts.enabled)
+
+	if [[ ${TS_ENABLED} == "true" ]]; then
+		# shellcheck disable=SC2068
+		$@
+		exit $?
+	fi
+}
+
+function in_environment() {
+	local RETURN=0
+
+	local TS_BRANCH_PREFIX
+	local TS_COMMIT_PREFIX
+
+	local TS_DIFF_NOTICE
+	local TS_DIFF_FILE
+	local TS_DIFF_TYPE
+
+	local TS_SERVER_DIRECTORY
+	local TS_SERVER_URL
+	local TS_SERVER_CERTIFICATE
+
+	local TS_REQUEST_FILE
+	local TS_REQUEST_OPTIONS
+
+	local TS_RESPONSE_FILE
+	local TS_RESPONSE_OPTIONS
+	local TS_RESPONSE_VERIFY
+
+	if [[ -z ${TS_ENVIRONMENT_SET+x} ]]; then
+		TS_BRANCH_PREFIX=$(git config ts.branch.prefix)
+		if [ $? -ne 0 ]; then
+			echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
+			RETURN=2
+		fi
+		TS_COMMIT_PREFIX=$(git config ts.commit.prefix)
+		if [ $? -ne 0 ]; then
+			echo 'Run "git config ts.commit.prefix" to set the signing commit message prefix'
+			RETURN=2
+		fi
+
+		TS_DIFF_NOTICE=$(git config ts.diff.notice)
+		if [ $? -ne 0 ]; then
+			echo 'Run "git config ts.diff.notice" to set the notice in the diff header'
+			RETURN=2
+		fi
+		TS_DIFF_FILE=$(git config ts.diff.file)
+		if [ $? -ne 0 ]; then
+			echo 'run "git config ts.diff.file" to set the name of the generated diff file'
+			RETURN=2
+		fi
+		TS_DIFF_TYPE=$(git config ts.diff.type)
+		if [ $? -ne 0 ]; then
+			echo 'run "git config ts.diff.type" to set how the diff is created'
+			RETURN=2
+		fi
+
+		TS_SERVER_DIRECTORY=$(git config ts.server.directory)
+		if [ $? -ne 0 ]; then
+			echo 'Run "git config ts.server.directory" to set the directory name of the the timestamping.sh server configs'
+			RETURN=2
+		fi
+		TS_SERVER_URL=$(git config ts.server.url)
+		if [ $? -ne 0 ]; then
+			echo 'Run "git config ts.server.url" to set the name of the file containing the timestamping.sh server url'
+			RETURN=2
+		fi
+		TS_SERVER_CERTIFICATE=$(git config ts.server.certificate)
+		if [ $? -ne 0 ]; then
+			echo 'Run "git config ts.server.certificate" to set the name of the timestamping.sh server certificate file'
+			RETURN=2
+		fi
+
+		TS_REQUEST_FILE=$(git config ts.request.file)
+		if [ $? -ne 0 ]; then
+			echo 'Run "git config ts.request.file" to set the name of the timestamp request file'
+			RETURN=2
+		fi
+		TS_REQUEST_OPTIONS=$(git config ts.request.options)
+		if [ $? -ne 0 ]; then
+			echo 'Run "git config ts.request.options" to set the options for creating the timestamp request file'
+			RETURN=2
+		fi
+
+		TS_RESPONSE_FILE=$(git config ts.respone.file)
+		if [ $? -ne 0 ]; then
+			echo 'Run "git config ts.response.file" to set the name of the timestamp response file'
+			RETURN=2
+		fi
+		TS_RESPONSE_OPTIONS=$(git config ts.respone.options)
+		if [ $? -ne 0 ]; then
+			echo 'Run "git config ts.response.options" to set the options for curling the timestamp response file'
+			RETURN=2
+		fi
+		TS_RESPONSE_VERIFY=$(git config ts.respone.verify)
+		if [ $? -ne 0 ]; then
+			echo 'Run "git config ts.response.verify" to set whether the timestamp response file is verified after'
+			RETURN=2
+		fi
+
+		if [[ ${RETURN} -ne 0 ]]; then
+			return ${RETURN}
+		fi
+
+		TS_ENVIRONMENT_SET=
+		# shellcheck disable=SC2068
+		$@
+		unset TS_ENVIRONMENT_SET
+	else
+		# shellcheck disable=SC2068
+		$@
+	fi
+}
+# endregion
+
+# region Stashing
+
 # Stashes uncommitted changes, if any
 # Returns:
 # 	0 No changes were stashed
@@ -21,6 +142,7 @@ function maybe_unstash() {
 		git stash pop >/dev/null 2>/dev/null
 	fi
 }
+# endregion
 
 function verify_timestamp() {
 	local IN_FILE=$1
@@ -183,32 +305,6 @@ function create_and_commit_timestamps() {
 }
 
 function update_timestamps() {
-	local TS_DIFF_FILE
-
-	local TS_SERVER_DIRECTORY
-	local TS_SERVER_CERTIFICATE
-	local TS_SERVER_URL
-
-	local TS_REQUEST_FILE
-	local TS_REQUEST_OPTIONS
-
-	local TS_RESPONSE_FILE
-	local TS_RESPONSE_OPTIONS
-	local TS_RESPONSE_VERIFY
-
-	TS_DIFF_FILE=$(git config ts.diff.file)
-
-	TS_SERVER_DIRECTORY=$(git config ts.server.directory)
-	TS_SERVER_URL=$(git config ts.server.url)
-	TS_SERVER_CERTIFICATE=$(git config ts.server.certificate)
-
-	TS_REQUEST_FILE=$(git config ts.request.file)
-	TS_REQUEST_OPTIONS=$(git config ts.request.options)
-
-	TS_RESPONSE_FILE=$(git config ts.respone.file)
-	TS_RESPONSE_OPTIONS=$(git config ts.respone.options)
-	TS_RESPONSE_VERIFY=$(git config ts.respone.verify)
-
 	local COMMIT_ID=$1
 	local BRANCH=$2
 	local REVS

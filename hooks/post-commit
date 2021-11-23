@@ -5,12 +5,6 @@ function hook_echo() {
 }
 
 function relate_timestamps() {
-	TS_BRANCH_PREFIX=$(git config ts.branch.prefix)
-	if [ $? -ne 0 ]; then
-		echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
-		exit 2
-	fi
-
 	local BRANCH
 	BRANCH=$(git symbolic-ref --short HEAD)
 	if [ $? -ne 0 ]; then
@@ -23,9 +17,6 @@ function relate_timestamps() {
 	if [[ ${BRANCH} == ${TS_BRANCH_PREFIX}/* ]]; then
 		exit 0
 	elif [[ "${BRANCH}" == "${TS_BRANCH_PREFIX}-" ]]; then
-		TS_SERVER_DIRECTORY=$(git config ts.server.directory)
-		TS_SERVER_CERTIFICATE=$(git config ts.server.certificate)
-
 		COMMIT_ID=$(git rev-parse HEAD)
 		update_timestamps "${COMMIT_ID}" "${BRANCH}"
 	elif [[ -f "${GIT_DIR}/TIMESTAMP" ]]; then
@@ -63,4 +54,4 @@ function relate_timestamps() {
 # shellcheck source=timestamping.sh
 source "$(dirname "$(realpath "$0")")/timestamping.sh"
 
-relate_timestamps
+if_enabled in_environment relate_timestamps
