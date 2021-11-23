@@ -17,36 +17,21 @@ function generate_timestamps() {
 
 	# Get current branch
 	local BRANCH
-	BRANCH=$(git symbolic-ref --short HEAD) 2>/dev/null
-	if [ $? -ne 0 ]; then
-		BRANCH=$(git config init.defaultBranch) 2>/dev/null
-		if [ $? -ne 0 ]; then
-			BRANCH="master"
-		fi
-	fi
+	BRANCH=$(get_branch)
 
 	# Return if already on signing branch
-	if [[ ${BRANCH} == ${TS_BRANCH_PREFIX}/* ]] || [[ ${BRANCH} == "${TS_BRANCH_PREFIX}-" ]]; then
+	if on_signing_branch; then
 		exit 0
 	fi
 
 	hook_echo "Branch is ${BRANCH}"
 
-	# Get signing branch name
-	local SIGNING_BRANCH
-	SIGNING_BRANCH="${TS_BRANCH_PREFIX}/${BRANCH}"
-
 	# Get applicable diff of staged files
-	local DIFF=""
-
 	hook_echo "Creating diff"
-	if [[ "${TS_DIFF_TYPE}" == "staged" ]]; then
-		DIFF=$(git diff --staged --full-index --binary)
-	elif [[ "${TS_DIFF_TYPE}" == "full" ]]; then
-		DIFF=$(git diff --staged --full-index --binary "$(git hash-object -t tree /dev/null)")
-	else
+	local DIFF
+	DIFF=$(get_diff)
+	if [[ $? -eq 3 ]]; then
 		hook_echo 'ERROR: ts.diff.type must be either "staged" or "full"'
-		exit 3
 	fi
 
 	# Get commit message
@@ -58,29 +43,16 @@ function generate_timestamps() {
 	! git rev-parse HEAD >/dev/null 2>/dev/null || git stash >/dev/null 2>/dev/null
 
 	# Create signing branch if non-existent
-	hook_echo "Switch to signing branch"
-	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
-		git checkout "${SIGNING_BRANCH}" -- ${TS_DIFF_FILE} ${TS_SERVER_DIRECTORY}/* >/dev/null 2>/dev/null
-	else
-		git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null
-	fi
+	check_out_signing_or_root "${BRANCH}"
 
 	# Write diff file
-	echo "${TS_DIFF_NOTICE}" >"${TS_DIFF_FILE}"
-	echo "${DIFF}" >>"${TS_DIFF_FILE}"
-	echo "" >>"${TS_DIFF_FILE}"
+	write_diff "${DIFF}"
 
 	create_and_commit_timestamps
 	RETURN=$?
 
 	# Checkout original branch
-	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
-		hook_echo "Restoring stage on ${BRANCH}"
-		git checkout "${BRANCH}" >/dev/null 2>/dev/null
-	else
-		hook_echo "Restoring stage on orphaned ${BRANCH}"
-		git checkout --orphan "${BRANCH}" >/dev/null 2>/dev/null
-	fi
+	check_out_actual "${BRANCH}"
 
 	# Remove timestamping files
 	rm -rf "${TS_SERVER_DIRECTORY:?}/" "${TS_DIFF_FILE}" ".gitattributes"

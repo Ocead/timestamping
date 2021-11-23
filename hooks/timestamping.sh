@@ -119,6 +119,57 @@ function in_environment() {
 }
 # endregion
 
+# region Timestamps
+function create_timestamp_request() {
+	local DATA_FILE=$1
+	local SERVER_DIRECTORY=$2
+
+	openssl ts -query \
+		-data "${DATA_FILE}" \
+		${TS_REQUEST_OPTIONS} \
+		-out "${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
+		>/dev/null 2>/dev/null
+	return $?
+}
+
+function get_timestamp_response() {
+	local SERVER_DIRECTORY=$1
+
+	curl --silent \
+		--header 'Content-Type: application/timestamp-query' \
+		${TS_RESPONSE_OPTIONS} \
+		--data-binary "@${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
+		"${SERVER_URL}" \
+		-o "${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}" \
+		>/dev/null
+}
+
+function verify_timestamp() {
+	local DATA_FILE=$1
+	local SERVER_DIRECTORY=$2
+
+	# Verify timestamp against request
+	if ! openssl ts -verify \
+		-in "${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}" \
+		-queryfile "${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
+		-CAfile "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" \
+		>/dev/null 2>/dev/null; then
+		return 2
+	fi
+
+	# Verify timestamp against data
+	if ! openssl ts -verify \
+		-in "${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}" \
+		-data "${DATA_FILE}" \
+		-CAfile "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" \
+		>/dev/null 2>/dev/null; then
+		return 1
+	fi
+
+	return 0
+}
+# endregion
+
 # region Stashing
 
 # Stashes uncommitted changes, if any
@@ -144,30 +195,167 @@ function maybe_unstash() {
 }
 # endregion
 
-function verify_timestamp() {
-	local IN_FILE=$1
-	local QUERY_FILE=$2
-	local CA_FILE=$3
-	local DATA_FILE=$4
-	# Verify timestamp against request
-	if ! openssl ts -verify \
-		-in "${IN_FILE}" \
-		-queryfile "${QUERY_FILE}" \
-		-CAfile "${CA_FILE}" \
-		>/dev/null 2>/dev/null; then
-		return 2
+# region Branches
+function get_branch() {
+	local BRANCH
+	BRANCH=$(git symbolic-ref --short HEAD)
+	if [ $? -ne 0 ]; then
+		BRANCH=$(git config init.defaultBranch)
+		if [ $? -ne 0 ]; then
+			BRANCH="master"
+		fi
+	fi
+	echo "${BRANCH}"
+}
+
+function get_signing_branch() {
+	echo "${TS_BRANCH_PREFIX}/$1"
+}
+
+function on_signing_branch() {
+	[[ ${BRANCH} == ${TS_BRANCH_PREFIX}/* || ${BRANCH} == "${TS_BRANCH_PREFIX}-" ]]
+	return $?
+}
+
+function check_out_actual() {
+	local BRANCH=$1
+	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
+		hook_echo "Restoring stage on ${BRANCH}"
+		git checkout "${BRANCH}" >/dev/null 2>/dev/null
+	else
+		hook_echo "Restoring stage on orphaned ${BRANCH}"
+		git checkout --orphan "${BRANCH}" >/dev/null 2>/dev/null
+	fi
+}
+
+function check_out_signing() {
+	hook_echo "Switch to signing branch"
+	local SIGNING_BRANCH
+	SIGNING_BRANCH=$(get_signing_branch $1)
+	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
+		git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
+	else
+		git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
+	fi
+}
+
+function check_out_signing_or_root() {
+	hook_echo "Switch to signing branch"
+	local SIGNING_BRANCH
+	SIGNING_BRANCH=$(get_signing_branch $1)
+	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
+		git checkout "${SIGNING_BRANCH}" -- ${TS_DIFF_FILE} ${TS_SERVER_DIRECTORY}/* >/dev/null 2>/dev/null
+	else
+		git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null
+	fi
+}
+# endregion
+
+# region Diffs
+function get_diff() {
+	if [[ "${TS_DIFF_TYPE}" == "staged" ]]; then
+		git diff --staged --full-index --binary
+		return 0
+	elif [[ "${TS_DIFF_TYPE}" == "full" ]]; then
+		git diff --staged --full-index --binary "$(git hash-object -t tree /dev/null)"
+		return 0
+	else
+		return 3
+	fi
+}
+
+function write_diff() {
+	echo "${TS_DIFF_NOTICE}" >"${TS_DIFF_FILE}"
+	echo "$1" >>"${TS_DIFF_FILE}"
+	echo "" >>"${TS_DIFF_FILE}"
+}
+# endregion
+
+# region Commits
+function add_ts_files() {
+	git add \
+		--force \
+		-- \
+		"${TS_DIFF_FILE}" \
+		${TS_SERVER_DIRECTORY}/* \
+		>/dev/null 2>/dev/null
+}
+
+function commit_ts_files() {
+	git commit \
+		--message "$1" \
+		-- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/" \
+		>/dev/null 2>/dev/null
+}
+
+function amend_ts_files() {
+	git commit \
+		--amend \
+		--message "$1" \
+		-- "./${TS_SERVER_DIRECTORY}/"* \
+		>/dev/null 2>/dev/null
+}
+
+function merge_branches() {
+	git merge \
+		--strategy=recursive \
+		--strategy-option=theirs \
+		"$1" \
+		>/dev/null 2>/dev/null
+}
+
+function relate_branches() {
+	git merge \
+		--allow-unrelated-histories \
+		--strategy ours \
+		--message "$1" \
+		"$2"
+}
+# endregion
+
+function comprehend_change() {
+	local d=$1
+
+	local CERT0
+	local CERT1
+	local URL0
+	local URL1
+	CERT0=$(git rev-parse @~0:"${d}${TS_SERVER_CERTIFICATE}" 2>/dev/null)
+	test $? -eq 0 || CERT0=""
+	CERT1=$(git rev-parse @~1:"${d}${TS_SERVER_CERTIFICATE}" 2>/dev/null)
+	test $? -eq 0 || CERT1=""
+	URL0=$(git rev-parse @~0:"${d}${TS_SERVER_URL}" 2>/dev/null)
+	test $? -eq 0 || URL0=""
+	URL1=$(git rev-parse @~1:"${d}${TS_SERVER_URL}" 2>/dev/null)
+	test $? -eq 0 || URL1=""
+
+	local SERVER_DIR
+	SERVER_DIR=${d#*${TS_SERVER_DIRECTORY}/}
+	SERVER_DIR=${SERVER_DIR%/*}
+
+	# Added/Modified TSAs
+	if [[ -n ${CERT0} && ${CERT0} != "${CERT1}" ]] ||
+		[[ -n ${URL0} && ${URL0} != "${URL1}" ]]; then
+		if [[ -z ${CERT1} && -z ${URL1} ]]; then
+			hook_echo "Adding TSA ${SERVER_DIR} to branch ${b}"
+		else
+			hook_echo "Updating TSA ${SERVER_DIR} to branch ${b}"
+		fi
+
+		if [[ -f "${TS_DIFF_FILE}" ]] && create_timestamp "${TS_DIFF_FILE}" "${d}"; then
+			return 0
+		fi
 	fi
 
-	# Verify timestamp against data
-	if ! openssl ts -verify \
-		-in "${IN_FILE}" \
-		-data "${DATA_FILE}" \
-		-CAfile "${CA_FILE}" \
-		>/dev/null 2>/dev/null; then
-		return 1
+	# Removed TSAs
+	if [[ ! -f "${d}/${TS_SERVER_CERTIFICATE}" ]] &&
+		[[ ! -f ".${d}/${TS_SERVER_URL}" ]]; then
+		hook_echo "Removing TSA ${SERVER_DIR} from branch ${b}"
+		git rm "${d}/${TS_REQUEST_FILE}" \
+			".${d}/${TS_RESPONSE_FILE}"
 	fi
 
-	return 0
+	return 1
 }
 
 # Creates a timestamp for a single TSA configuration
@@ -185,10 +373,7 @@ function create_timestamp() {
 	local DATA_FILE=$1
 	local SERVER_DIRECTORY=$2
 
-	local SERVER_DIR
-	local SERVER_URL
-
-	SERVER_DIR=${SERVER_DIRECTORY#*${TS_SERVER_DIRECTORY}/}
+	local SERVER_DIR=${SERVER_DIRECTORY#*${TS_SERVER_DIRECTORY}/}
 	SERVER_DIR=${SERVER_DIR%/*}
 
 	if [[ "${SERVER_DIR}" == "*" ]]; then
@@ -199,6 +384,7 @@ function create_timestamp() {
 		return 4
 	fi
 
+	local SERVER_URL
 	if [[ -f "${SERVER_DIRECTORY}/${TS_SERVER_URL}" ]]; then
 		SERVER_URL=$(cat "${SERVER_DIRECTORY}/${TS_SERVER_URL}")
 	else
@@ -207,38 +393,21 @@ function create_timestamp() {
 	hook_echo "Generating timestamp for ${SERVER_DIR} at ${SERVER_URL}"
 
 	# Create timestamp request
-	openssl ts -query \
-		-data "${DATA_FILE}" \
-		${TS_REQUEST_OPTIONS} \
-		-out "${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
-		>/dev/null 2>/dev/null || return 3
+	create_timestamp_request "${DATA_FILE}" "${SERVER_DIRECTORY}" || return 3
 
 	# Get timestamp response
-	curl --silent --header 'Content-Type: application/timestamp-query' \
-		${TS_RESPONSE_OPTIONS} \
-		--data-binary "@${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
-		"${SERVER_URL}" \
-		-o "${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}" \
-		>/dev/null || return 2
+	get_timestamp_response "${SERVER_DIRECTORY}" || return 2
 
 	# Run verifications if set
 	if [[ "${TS_RESPONSE_VERIFY}" == "true" ]]; then
 		local RESULT
 		RESULT=$(verify_timestamp \
-			"${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}" \
-			"${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
-			"${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" \
 			"${DATA_FILE}" \
-			>/dev/null)
+			"${SERVER_DIRECTORY}")
 		case ${RESULT} in
-		2)
-			hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against request!"
-			;;
-		1)
-			hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against diff!"
-			;;
+		2) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against request!" ;;
+		1) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against diff!" ;;
 		0) ;;
-
 		esac
 
 		return ${RESULT}
@@ -249,53 +418,35 @@ function create_timestamp() {
 
 function commit_timestamps() {
 	# Checkout signing branch
-	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
-		git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
-	else
-		git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
-	fi
+	check_out_signing "$1"
 
 	# Add timestamp files to stage
 	hook_echo "Committing timestamps"
-	git add \
-		--force \
-		-- \
-		"${TS_DIFF_FILE}" \
-		${TS_SERVER_DIRECTORY}/* \
-		>/dev/null 2>/dev/null
+	add_ts_files
 
 	# Commit timestamp files
-	git commit \
-		--message "${TS_COMMIT_PREFIX}${COMMIT_MSG}" \
-		-- "${TS_DIFF_FILE}" "./${TS_SERVER_DIRECTORY}/" \
-		>/dev/null 2>/dev/null
+	commit_ts_files "${TS_COMMIT_PREFIX}${COMMIT_MSG}"
 	touch "${GIT_DIR}/TIMESTAMP"
 }
 
 function create_and_commit_timestamps() {
+	local RETURN=0
 	local SIG_COUNT=0
 
 	# Loop for each timestamping server
 	for d in "${TS_SERVER_DIRECTORY}/"*/; do
 		create_timestamp "${TS_DIFF_FILE}" "${d}"
 		case $? in
-		0)
-			SIG_COUNT=$((SIG_COUNT + 1))
-			;;
-		1)
-			RETURN=1
-			;;
-		2)
-			RETURN=1
-			;;
+		0) SIG_COUNT=$((SIG_COUNT + 1)) ;;
+		1) RETURN=1 ;;
+		2) RETURN=1 ;;
 		*) ;;
-
 		esac
 	done
 
 	# Check if any signature was generated
 	if [[ ${SIG_COUNT} -gt 0 ]] && [[ ${RETURN} -eq 0 ]]; then
-		commit_timestamps
+		commit_timestamps "${BRANCH}"
 	else
 		hook_echo "No timestamps to commit"
 		rm "${TS_DIFF_FILE}" >/dev/null
@@ -307,6 +458,7 @@ function create_and_commit_timestamps() {
 function update_timestamps() {
 	local COMMIT_ID=$1
 	local BRANCH=$2
+
 	local REVS
 	local BRANCHES=()
 	local IFS
@@ -331,75 +483,18 @@ function update_timestamps() {
 	for b in "${BRANCHES[@]}"; do
 		hook_echo "Applying TSA changes to ${b}"
 		git checkout "${b}" >/dev/null 2>/dev/null
-		git merge \
-			--strategy=recursive \
-			--strategy-option=theirs \
-			"${COMMIT_ID}" \
-			>/dev/null 2>/dev/null
+		merge_branches "${COMMIT_ID}"
 
 		for d in "${TS_SERVER_DIRECTORY}/"*/; do
-			local CERT0
-			local CERT1
-			local URL0
-			local URL1
-			CERT0=$(git rev-parse @~0:"${d}${TS_SERVER_CERTIFICATE}" 2>/dev/null)
-			test $? -eq 0 || CERT0=""
-			CERT1=$(git rev-parse @~1:"${d}${TS_SERVER_CERTIFICATE}" 2>/dev/null)
-			test $? -eq 0 || CERT1=""
-			URL0=$(git rev-parse @~0:"${d}${TS_SERVER_URL}" 2>/dev/null)
-			test $? -eq 0 || URL0=""
-			URL1=$(git rev-parse @~1:"${d}${TS_SERVER_URL}" 2>/dev/null)
-			test $? -eq 0 || URL1=""
-
-			local SERVER_DIR
-			SERVER_DIR=${d#*${TS_SERVER_DIRECTORY}/}
-			SERVER_DIR=${SERVER_DIR%/*}
-
-			# Added/Modified TSAs
-			if [[ -n ${CERT0} && ${CERT0} != "${CERT1}" ]] ||
-				[[ -n ${URL0} && ${URL0} != "${URL1}" ]]; then
-				if [[ -z ${CERT1} && -z ${URL1} ]]; then
-					hook_echo "Adding TSA ${SERVER_DIR} to branch ${b}"
-				else
-					hook_echo "Updating TSA ${SERVER_DIR} to branch ${b}"
-				fi
-
-				if [[ -f "${TS_DIFF_FILE}" ]]; then
-					create_timestamp "${TS_DIFF_FILE}" "${d}"
-					case $? in
-					0)
-						SIG_COUNT=$((SIG_COUNT + 1))
-						;;
-					*)
-						hook_echo "create_timestamp returned $?"
-						;;
-					esac
-				fi
-			fi
-
-			# Removed TSAs
-			if [[ ! -f "${d}/${TS_SERVER_CERTIFICATE}" ]] &&
-				[[ ! -f ".${d}/${TS_SERVER_URL}" ]]; then
-				hook_echo "Removing TSA ${SERVER_DIR} from branch ${b}"
-				git rm "${d}/${TS_REQUEST_FILE}" \
-					".${d}/${TS_RESPONSE_FILE}"
+			if comprehend_change "${d}"; then
+				SIG_COUNT=$((SIG_COUNT + 1))
 			fi
 		done
 
 		if [[ ${SIG_COUNT} -gt 0 ]]; then
 			hook_echo "Committing timestamps"
-			git add \
-				--force \
-				-- \
-				"${TS_DIFF_FILE}" \
-				${TS_SERVER_DIRECTORY}/* \
-				>/dev/null 2>/dev/null
-
-			git commit \
-				--amend \
-				--message "Applied updates from '${COMMIT_ID}' to ${b}" \
-				-- "./${TS_SERVER_DIRECTORY}/"* \
-				>/dev/null 2>/dev/null
+			add_ts_files
+			amend_ts_files "Applied updates from '${COMMIT_ID}' to ${b}"
 		else
 			hook_echo "No timestamps to amend"
 			rm "${TS_DIFF_FILE}" >/dev/null
