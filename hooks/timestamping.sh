@@ -328,14 +328,10 @@ function comprehend_change() {
 	local CERT1
 	local URL0
 	local URL1
-	CERT0=$(git rev-parse @~0:"${d}${TS_SERVER_CERTIFICATE}" 2>/dev/null)
-	test $? -eq 0 || CERT0=""
-	CERT1=$(git rev-parse @~1:"${d}${TS_SERVER_CERTIFICATE}" 2>/dev/null)
-	test $? -eq 0 || CERT1=""
-	URL0=$(git rev-parse @~0:"${d}${TS_SERVER_URL}" 2>/dev/null)
-	test $? -eq 0 || URL0=""
-	URL1=$(git rev-parse @~1:"${d}${TS_SERVER_URL}" 2>/dev/null)
-	test $? -eq 0 || URL1=""
+	CERT0=$(git rev-parse @~0:"${d}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT0=""
+	CERT1=$(git rev-parse @~1:"${d}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT1=""
+	URL0=$(git rev-parse @~0:"${d}${TS_SERVER_URL}" 2>/dev/null) || URL0=""
+	URL1=$(git rev-parse @~1:"${d}${TS_SERVER_URL}" 2>/dev/null) || URL1=""
 
 	local SERVER_DIR
 	SERVER_DIR=${d#*${TS_SERVER_DIRECTORY}/}

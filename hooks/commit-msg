@@ -27,16 +27,11 @@ function hook_echo() {
 	echo -e "[\e[0;32m${TAG}\e[0m]: $1"
 }
 
-if [ $# -eq 0 ]; then
-	echo 'Call this script only through "git commit".'
-	exit 4
-fi
-
 function generate_timestamps() {
-	# Quit if timestamping.sh is not configured
 	if [ $# -eq 0 ]; then
-		exit 0
-	fi
+  	echo 'Call this script only through "git commit".'
+  	exit 4
+  fi
 
 	# Get current branch
 	local BRANCH
