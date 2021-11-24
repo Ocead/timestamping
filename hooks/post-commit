@@ -36,7 +36,7 @@ function relate_timestamps() {
 	elif [[ "${BRANCH}" == "${TS_BRANCH_PREFIX}-" ]]; then
 		COMMIT_ID=$(git rev-parse HEAD)
 		update_timestamps "${COMMIT_ID}" "${BRANCH}"
-	elif [[ -f "${GIT_DIR}/TIMESTAMP" ]]; then
+	elif [[ -n "${GIT_DIR}" && -f "${GIT_DIR}/TIMESTAMP" ]] || [[ -f "${PWD}/.git/TIMESTAMP" ]]; then
 		COMMIT_ID=$(git rev-parse HEAD)
 		hook_echo "Commit ID is ${COMMIT_ID}"
 
@@ -49,11 +49,15 @@ function relate_timestamps() {
 			local STASH
 			maybe_stash
 			STASH=$?
-			git checkout "${SIGNING_BRANCH}"
+			git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
 
 			hook_echo "Merging ${BRANCH} into ${SIGNING_BRANCH}"
 			relate_branches "Relate commit '${COMMIT_ID}' to ${SIGNING_BRANCH}" "${COMMIT_ID}"
-			rm "${GIT_DIR}/TIMESTAMP"
+			if [[ -n "${GIT_DIR}" ]]; then
+				rm "${GIT_DIR}/TIMESTAMP"
+			else
+				rm "${PWD}/.git/TIMESTAMP"
+			fi
 
 			git checkout "${BRANCH}" >/dev/null 2>/dev/null
 

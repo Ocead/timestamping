@@ -316,7 +316,8 @@ function relate_branches() {
 		--allow-unrelated-histories \
 		--strategy ours \
 		--message "$1" \
-		"$2"
+		"$2" \
+		>/dev/null 2>/dev/null
 }
 # endregion
 
@@ -434,7 +435,11 @@ function commit_timestamps() {
 
 	# Commit timestamp files
 	commit_ts_files "${TS_COMMIT_PREFIX}${COMMIT_MSG}"
-	touch "${GIT_DIR}/TIMESTAMP"
+	if [[ -n "${GIT_DIR}" ]]; then
+		touch "${GIT_DIR}/TIMESTAMP"
+	else
+		touch "${PWD}/.git/TIMESTAMP"
+	fi
 }
 
 function create_and_commit_timestamps() {
