@@ -23,7 +23,8 @@
 #	SOFTWARE.
 
 function hook_echo() {
-	echo -e "[\e[0;32mpost-commit\e[0m]: $1"
+	local TAG="post-commit"
+	echo -e "[\e[0;32m${TAG}\e[0m]: $1"
 }
 
 function relate_timestamps() {

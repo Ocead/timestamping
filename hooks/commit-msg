@@ -23,7 +23,8 @@
 #	SOFTWARE.
 
 function hook_echo() {
-	echo -e "[\e[0;32mcommit-msg\e[0m]: $1"
+	local TAG="commit-msg"
+	echo -e "[\e[0;32m${TAG}\e[0m]: $1"
 }
 
 if [ $# -eq 0 ]; then
@@ -33,7 +34,7 @@ fi
 
 function generate_timestamps() {
 	# Quit if timestamping.sh is not configured
-	if [ $? -ne 0 ]; then
+	if [ $# -eq 0 ]; then
 		exit 0
 	fi
 
@@ -78,7 +79,7 @@ function generate_timestamps() {
 
 	# Remove timestamping files
 	rm -rf "${TS_SERVER_DIRECTORY:?}/" "${TS_DIFF_FILE}" ".gitattributes"
-	git reset -- ${TS_SERVER_DIRECTORY:?}/* "${TS_DIFF_FILE}" ".gitattributes" >/dev/null 2>/dev/null
+	git reset -- "${TS_SERVER_DIRECTORY:?}/"* "${TS_DIFF_FILE}" ".gitattributes" >/dev/null 2>/dev/null
 
 	# Restore original commit message
 	echo "${COMMIT_MSG}" >"${COMMIT_MSG_FILE}"
@@ -95,4 +96,4 @@ function generate_timestamps() {
 # shellcheck source=timestamping.sh
 source "$(dirname "$(realpath "$0")")/timestamping.sh"
 
-if_enabled in_environment generate_timestamps $1
+if_enabled in_environment generate_timestamps "$1"

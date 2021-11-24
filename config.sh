@@ -2,7 +2,8 @@
 
 # Echos with marking
 function script_echo() {
-	echo -e "[\e[0;32mconfig.sh\e[0m]: $1"
+	local TAG="config.sh"
+	echo -e "[\e[0;32m${TAG}\e[0m]: $1"
 }
 
 # Prints help
@@ -73,10 +74,8 @@ function copy_hooks() {
 # Create initial timestamping objects
 function configure_repo() {
 	# Get currently checked out branch
-	BRANCH=$(git symbolic-ref --short HEAD)
-	if [ $? -ne 0 ]; then
-		BRANCH=$(git config init.defaultBranch)
-		if [ $? -ne 0 ]; then
+	if ! BRANCH=$(git symbolic-ref --short HEAD); then
+		if ! BRANCH=$(git config init.defaultBranch); then
 			BRANCH="master"
 		fi
 	fi
@@ -91,7 +90,7 @@ function configure_repo() {
 	TS_SERVER_DIRECTORY=$(git config --get ts.server.directory)
 	mkdir -p "./${TS_SERVER_DIRECTORY}"
 	echo "Place your TSA configuration in this directory." >"./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE"
-	if ! grep -q "*.diff binary" .gitattributes >/dev/null 2>/dev/null; then
+	if ! grep -q -F -x "*.diff binary" .gitattributes >/dev/null 2>/dev/null; then
 		echo "*.diff binary" >>.gitattributes
 	fi
 	git add "./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE" >/dev/null 2>/dev/null
@@ -196,13 +195,13 @@ while getopts "dh" opt; do
 		;;
 	esac
 done
-shift $(expr ${OPTIND} - 1)
+shift $((OPTIND - 1))
 
 if [ $# -eq 0 ]; then
 	print_help
 	exit 4
 fi
 
-install_timestamping $1
+install_timestamping "$1"
 
 exit 0
