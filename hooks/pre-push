@@ -41,7 +41,7 @@ function maybe_withhold() {
 	local LOCAL_OID
 	while read -r _ LOCAL_OID _ _; do
 		local BRANCHES
-		BRANCHES=$(is_timestamping_only_object "${LOCAL_OID}")
+		BRANCHES=$(is_signing_only_object "${LOCAL_OID}")
 		case $? in
 		0)
 			return 0

@@ -23,6 +23,14 @@
 #	SOFTWARE.
 
 # region Environment setup
+
+# If timestamping is enabled runs the command passed via arguments
+# Arguments:
+# 	$@: Command to run
+#
+# Returns:
+# 	&1: The output of $@
+# 	$?: The exit code of $@
 function if_enabled() {
 	local TS_ENABLED
 	TS_ENABLED=$(git config --get ts.enabled)
@@ -35,6 +43,13 @@ function if_enabled() {
 	return 0
 }
 
+# Runs a command passed via arguments after setting up variables for all timestamping options
+# Arguments:
+# 	$@: Command to run
+#
+# Returns:
+# 	&1: The output of $@
+# 	$?: The exit code of $@
 function in_environment() {
 	shopt -s extglob
 	. "$(git --exec-path)/git-sh-setup"
@@ -141,13 +156,42 @@ function in_environment() {
 # endregion
 
 # region Objects
+
+# Removes redundant slashes from paths
+# Arguments:
+# 	$1: Possibly uncanonical path
+#
+# Returns:
+# 	&1: Canonized path
 function canonize() {
-	LOCAL -n PATH
-	echo "${PATH}" | sed s#//*#/#g
+	local PATH=$1
+	echo "${PATH//\/*(\/)/\/}"
+}
+
+# Gets the content of a versioned file
+# Arguments:
+# 	$1: the branch of the file
+# 	$2: the path to the file
+#
+# Returns:
+# 	&1: The contents of the file
+function get_file() {
+	local BRANCH=$1
+	local PATH
+	PATH=$(canonize "$2")
+	git show "${BRANCH}:${PATH}"
 }
 # endregion
 
 # region Timestamps
+
+# Creates a timestamp request file
+# Arguments:
+# 	$1: Path to the file to be signed
+# 	$2: Path to the TSA configuration directory
+#
+# Returns:
+# 	$?: The exit code of openssl ts -query
 function create_timestamp_request() {
 	local DATA_FILE=$1
 	local SERVER_DIRECTORY=$2
@@ -160,6 +204,12 @@ function create_timestamp_request() {
 	return $?
 }
 
+# Retrieves a timestamp response file
+# Arguments:
+# 	$1: Path to the TSA configuration directory
+#
+# Returns:
+# 	$?: The exit code of curl
 function get_timestamp_response() {
 	local SERVER_DIRECTORY=$1
 
@@ -181,8 +231,19 @@ function get_timestamp_response() {
 		"${SERVER_URL}" \
 		-o "${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}" \
 		>/dev/null
+
+	return $?
 }
 
+# Verifies a timestamp response file
+# Arguments:
+# 	$1: Path to the signed file
+# 	$2: Path to the TSA configuration directory
+#
+# Returns:
+# 	0: Response is OK
+# 	1: Could not verify against the signed file
+# 	2: Could not verify against the request file
 function verify_timestamp() {
 	local DATA_FILE=$1
 	local SERVER_DIRECTORY=$2
@@ -213,8 +274,8 @@ function verify_timestamp() {
 
 # Stashes uncommitted changes, if any
 # Returns:
-# 	0 No changes were stashed
-# 	1 Changes were stashed
+# 	0: No changes were stashed
+# 	1: Changes were stashed
 function maybe_stash() {
 	if git rev-parse HEAD >/dev/null 2>/dev/null && git diff --cached --quiet --exit-code HEAD; then
 		git stash push >/dev/null 2>/dev/null
@@ -235,6 +296,10 @@ function maybe_unstash() {
 # endregion
 
 # region Branches
+
+# Gets the name of the branch the next commit would go to
+# Returns:
+# 	&1: The name of the branch
 function get_branch() {
 	local BRANCH
 	if ! BRANCH=$(git symbolic-ref --short HEAD); then
@@ -245,10 +310,22 @@ function get_branch() {
 	echo "${BRANCH}"
 }
 
+# Gets the name of the signing branch for the current one
+# Arguments:
+# 	$1: Actual branch name
+#
+# Returns:
+# 	&1: The name of the signing branch
 function get_signing_branch() {
 	echo "${TS_BRANCH_PREFIX}/$1"
 }
 
+# Gets the name of best existing signing branch for the current one
+# Arguments:
+# 	$1: Actual branch name
+#
+# Returns:
+# 	&1: The name of the signing branch
 function get_actual_signing_branch() {
 	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
 		echo "${TS_BRANCH_PREFIX}/$1"
@@ -257,11 +334,18 @@ function get_actual_signing_branch() {
 	fi
 }
 
+# Checks, if currently on a signing branch
+# Returns:
+# 	0: On signing branch
+# 	1: Not on signing branch
 function on_signing_branch() {
 	[[ ${BRANCH} == ${TS_BRANCH_PREFIX}/* || ${BRANCH} == "${TS_BRANCH_PREFIX}-" ]]
 	return $?
 }
 
+# Checks out an actual branch, as orphan if necessary
+# Arguments:
+# 	$1: Name of the branch
 function check_out_actual() {
 	local BRANCH=$1
 	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
@@ -273,6 +357,9 @@ function check_out_actual() {
 	fi
 }
 
+# Checks out a signing branch, branch if root signing if necessary
+# Arguments:
+# 	$1: Name of the branch
 function check_out_signing() {
 	local SIGNING_BRANCH
 	SIGNING_BRANCH=$(get_signing_branch "$1")
@@ -284,12 +371,20 @@ function check_out_signing() {
 	fi
 }
 
-function is_timestamping_only_object() {
+# Checks whether an object only exists on signing branches
+# Arguments:
+# 	$1 OID of the object in question
+#
+# Returns:
+# 	0: Object is signing branch only
+# 	1: Object is on at least one actual branch
+function is_signing_only_object() {
+	local OID=$1
 	local ACTUAL=0
 	local OUTPUT
 	local BRANCHES=()
 	local TS_BRANCHES=()
-	mapfile -t BRANCHES < <(git branch --contains "${LOCAL_OID}" | tr -d " *")
+	mapfile -t BRANCHES < <(git branch --contains "${OID}" | tr -d " *")
 	for b in "${BRANCHES[@]}"; do
 		if [[ ${b} != "${TS_BRANCH_PREFIX}-" && ${b} != "${TS_BRANCH_PREFIX}/"* ]]; then
 			ACTUAL=$((ACTUAL + 1))
@@ -307,6 +402,12 @@ function is_timestamping_only_object() {
 	fi
 }
 
+# Prints a list of all active TSA configurations on a branch
+# Arguments:
+# 	$1: Branch to check
+#
+# Returns:
+# 	&1: All active TSA configuration directory names
 function echo_tsa_list() {
 	local BRANCH=$1
 	local TSA_LIST=()
@@ -323,6 +424,10 @@ function echo_tsa_list() {
 # endregion
 
 # region Diffs
+
+# Prints the standard diff for timestamping
+# Returns:
+# 	&1: The diff
 function get_diff() {
 	if [[ "${TS_DIFF_TYPE}" == "staged" ]]; then
 		git diff --staged --full-index --binary
@@ -335,14 +440,28 @@ function get_diff() {
 	fi
 }
 
+# Prints a diff for a TSA configuration
+# Arguments:
+# 	$1: Branch the TSA configuration is on
+# 	$2: TSA configuration directory name
+#
+# Returns:
+# 	&1: The generated diff
+# 	$?: The exit code of the diff provider
 function get_tsa_diff() {
 	local BRANCH=$1
+	local SERVER_DIRECTORY=$2
 	local DIFF_PROVIDER
-	DIFF_PROVIDER=$(git show "${TS_SERVER_DIRECTORY}/${BRANCH}/${TS_SERVER_CERTIFICATE}")
+	local PATH
+	PATH=$(canonize "${BRANCH}:${TS_SERVER_DIRECTORY}/${SERVER_DIRECTORY}/${TS_DIFF_FILE}.sh")
+	DIFF_PROVIDER=$(git show "${PATH}")
 	eval "$DIFF_PROVIDER"
 	return $?
 }
 
+# Writes data to the standard diff file
+# Arguments:
+# 	$1: The data to write
 function write_diff() {
 	local DIFF=$1
 	echo "${TS_DIFF_NOTICE}" >"${TS_DIFF_FILE}"
@@ -350,62 +469,63 @@ function write_diff() {
 	echo "" >>"${TS_DIFF_FILE}"
 }
 
+# Writes data to a TSA configuration's diff file
+# Arguments:
+# 	$1: The diff
+# 	$2: TSA configuration directory name
 function write_tsa_diff() {
 	local DIFF=$1
-	local BRANCH=$2
-	local DIFF_FILE="${TS_SERVER_DIRECTORY}/${BRANCH}/${TS_SERVER_CERTIFICATE}"
+	local SERVER_DIRECTORY=$2
+	local DIFF_FILE="${TS_SERVER_DIRECTORY}/${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}"
 	echo "${TS_DIFF_NOTICE}" >"${DIFF_FILE}"
 	echo "${DIFF}" >>"${DIFF_FILE}"
 	echo "" >>"${DIFF_FILE}"
 }
 
+# Checks if a diff file is well-formed
+# Arguments:
+# 	$1: Path to the diff file
+#
+# Returns:
+# 	0: Diff file is well-formed
+# 	1: Diff file is ill-formed
 function check_diff() {
-	local DIFF=$1
-
-	git apply --check - <<<"${DIFF}"
+	local DIFF_FILE=$1
+	git apply --check "${DIFF_FILE}"
 	return $?
 }
 # endregion
 
 # region Commits
+
+# Adds the timestamping files to the staging area
 function add_ts_files() {
-	git add \
-		--force \
-		-- \
-		"${TS_DIFF_FILE}" \
-		"${TS_SERVER_DIRECTORY}/"*
+	git add --force -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"*
 }
 
+# Commits the timestamping files in the staging area
 function commit_ts_files() {
-	git commit \
-		--message "$1" \
-		-- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/" \
-		>/dev/null 2>/dev/null
+	local COMMIT_MSG=$1
+	git commit --message "${COMMIT_MSG}" -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"*
 }
 
+# Amends the timestamping files in the staging area to the last commit
 function amend_ts_files() {
-	git commit \
-		--amend \
-		--message "$1" \
-		-- "./${TS_SERVER_DIRECTORY}/"* \
-		>/dev/null 2>/dev/null
+	local COMMIT_MSG=$1
+	git commit --amend --message "${COMMIT_MSG}" -- "${TS_SERVER_DIRECTORY}/"*
 }
 
+# Merges changes from the root signing branch into the current signing branch
 function merge_branches() {
-	git merge \
-		--strategy=recursive \
-		--strategy-option=theirs \
-		"$1" \
-		>/dev/null 2>/dev/null
+	local COMMIT_ID=$1
+	git merge --strategy=recursive --strategy-option=theirs "${COMMIT_ID}"
 }
 
+# Relates a commit to the last timestamping commit
 function relate_branches() {
-	git merge \
-		--allow-unrelated-histories \
-		--strategy ours \
-		--message "$1" \
-		"$2" \
-		>/dev/null 2>/dev/null
+	local COMMIT_MSG=$1
+	local COMMIT_ID=$2
+	git merge --allow-unrelated-histories --strategy ours --message "${COMMIT_MSG}" "${COMMIT_ID}"
 }
 # endregion
 
@@ -514,7 +634,7 @@ function commit_timestamps() {
 	touch "${GIT_DIR}/TIMESTAMP"
 }
 
-function create_and_commit_timestamps() {
+function create_timestamps() {
 	local RETURN=0
 	local SIG_COUNT=0
 
@@ -531,13 +651,10 @@ function create_and_commit_timestamps() {
 
 	# Check if any signature was generated
 	if [[ ${SIG_COUNT} -gt 0 ]] && [[ ${RETURN} -eq 0 ]]; then
-		commit_timestamps "${BRANCH}"
+		return 0
 	else
-		hook_echo "No timestamps to commit"
-		rm "${TS_DIFF_FILE}" >/dev/null
+		return 1
 	fi
-
-	return ${RETURN}
 }
 
 function update_timestamps() {
