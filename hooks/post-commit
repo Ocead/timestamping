@@ -32,7 +32,7 @@ function relate_timestamps() {
 	BRANCH=$(get_branch)
 
 	if [[ ${BRANCH} == ${TS_BRANCH_PREFIX}/* ]]; then
-		exit 0
+		return 0
 	elif [[ "${BRANCH}" == "${TS_BRANCH_PREFIX}-" ]]; then
 		COMMIT_ID=$(git rev-parse HEAD)
 		update_timestamps "${COMMIT_ID}" "${BRANCH}"
@@ -74,8 +74,10 @@ function ts-post-commit() {
 	source "$(dirname "$(realpath "$0")")/timestamping.sh"
 
 	if_enabled in_environment relate_timestamps
+	return $?
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 	ts-post-commit
+	exit $?
 fi

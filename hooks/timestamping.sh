@@ -30,8 +30,10 @@ function if_enabled() {
 	if [[ ${TS_ENABLED} == "true" ]]; then
 		# shellcheck disable=SC2068
 		$@
-		exit $?
+		return $?
 	fi
+
+	return 0
 }
 
 function in_environment() {
@@ -120,10 +122,13 @@ function in_environment() {
 		TS_ENVIRONMENT_SET=
 		# shellcheck disable=SC2068
 		$@
+		RETURN=$?
 		unset TS_ENVIRONMENT_SET
+		return ${RETURN}
 	else
 		# shellcheck disable=SC2068
 		$@
+		return $?
 	fi
 }
 # endregion

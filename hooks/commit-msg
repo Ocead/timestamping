@@ -28,9 +28,8 @@ function hook_echo() {
 }
 
 function generate_timestamps() {
-	if [ $# -eq 0 ]; then
-  	echo 'Call this script only through "git commit".'
-  	exit 4
+	if [ $# -lt 1 ]; then
+  	die 'Call this script only through "git commit".'
   fi
 
 	# Get current branch
@@ -39,7 +38,7 @@ function generate_timestamps() {
 
 	# Return if already on signing branch
 	if on_signing_branch; then
-		exit 0
+		return 0
 	fi
 
 	hook_echo "Branch is ${BRANCH}"
@@ -85,7 +84,7 @@ function generate_timestamps() {
 	# Wait one second for different commit timestamps
 	sleep 1s
 
-	exit ${RETURN}
+	return ${RETURN}
 }
 
 function ts-commit-msg() {
@@ -93,8 +92,10 @@ function ts-commit-msg() {
 	source "$(dirname "$(realpath "$0")")/timestamping.sh"
 
 	if_enabled in_environment generate_timestamps "$1"
+	return $?
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 	ts-commit-msg "$1"
+	exit $?
 fi
