@@ -37,6 +37,8 @@ function if_enabled() {
 }
 
 function in_environment() {
+	. "$(git --exec-path)/git-sh-setup"
+
 	local RETURN=0
 
 	local TS_BRANCH_PREFIX
@@ -436,11 +438,7 @@ function commit_timestamps() {
 
 	# Commit timestamp files
 	commit_ts_files "${TS_COMMIT_PREFIX}${COMMIT_MSG}"
-	if [[ -n "${GIT_DIR}" ]]; then
-		touch "${GIT_DIR}/TIMESTAMP"
-	else
-		touch "${PWD}/.git/TIMESTAMP"
-	fi
+	touch "${GIT_DIR}/TIMESTAMP"
 }
 
 function create_and_commit_timestamps() {

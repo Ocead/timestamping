@@ -36,7 +36,7 @@ function relate_timestamps() {
 	elif [[ "${BRANCH}" == "${TS_BRANCH_PREFIX}-" ]]; then
 		COMMIT_ID=$(git rev-parse HEAD)
 		update_timestamps "${COMMIT_ID}" "${BRANCH}"
-	elif [[ -n "${GIT_DIR}" && -f "${GIT_DIR}/TIMESTAMP" ]] || [[ -f "${PWD}/.git/TIMESTAMP" ]]; then
+	elif [[ -f "${GIT_DIR}/TIMESTAMP" ]]; then
 		COMMIT_ID=$(git rev-parse HEAD)
 		hook_echo "Commit ID is ${COMMIT_ID}"
 
