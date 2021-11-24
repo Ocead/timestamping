@@ -42,7 +42,7 @@ to:
    2. Call the `ts-commit-msg` or `ts-post-commit` function with the arguments the respective hook expects.
 
 > ℹ Note: if the script was installed into `.git/hooks` it is technically not part of the repository
-> and will therefore **not** be versioned through commits **nor** sent to remotes through pushs.
+> and will therefore **not** be versioned through commits **nor** sent to remotes through pushes.
 
 > ⚠ Warning: If the repository you wish to install to already uses the `commit-msg` and `post-commit` hooks,
 > make sure the scripts of this software are run **not** parallel to other hooked scripts that read or modify the
@@ -55,7 +55,7 @@ Protocol" specified in [RFC 3161](https://www.rfc-editor.org/rfc/rfc3161.html).
 
 ### Creating timestamps
 
-Timestamps of your commits are automtically created on calling [git-commit](https://git-scm.com/docs/git-commit).
+Timestamps of your commits are automatically created on calling [git-commit](https://git-scm.com/docs/git-commit).
 
 On committing, this will happen behind the scenes:
 
@@ -188,18 +188,18 @@ The repository should look like this afterwards (provided default options):
 You may want to change the configuration of a TSA if the URL to the server or the keychain of the server change. To do
 so (provided default options):
 
-1. Change the associated files/directory on branch `sig`.
-2. Commit the changes to `sig`.
+1. Change the associated files/directory on branch `sig-`.
+2. Commit the changes to `sig-`.
 
-Upon committing to the `sig` branch, the timestamps for the changed TSA configurations will be updated for all branches
+Upon committing to the `sig-` branch, the timestamps for the changed TSA configurations will be updated for all branches
 that already have a timestamp of the previous version of the TSA configuration.
 
 ### Deleting a TSA configuration
 
 To delete a TSA configuration (provided default options):
 
-1. Delete the associated directory in `rfc3161` on branch `sig`.
-2. Commit deleting the directory to `sig`.
+1. Delete the associated directory in `rfc3161` on branch `sig-`.
+2. Commit deleting the directory to `sig-`.
 
 ## Options
 
