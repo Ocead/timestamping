@@ -37,6 +37,9 @@ to:
 
 1. Copy the contents of [hooks](hooks) directory into the `.git/hooks` directory of the target repository.
 2. Set the options described in the [options](#options) section for at least the target repository.
+3. If you already have the hooks `commit-msg` or `post-commit` in place:
+   1. (`source` this software's renamed hook file)
+   2. Call the `ts-commit-msg` or `ts-post-commit` function with the arguments the respective hook expects.
 
 > ℹ Note: if the script was installed into `.git/hooks` it is technically not part of the repository
 > and will therefore **not** be versioned through commits **nor** sent to remotes through pushs.

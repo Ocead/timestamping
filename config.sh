@@ -65,8 +65,14 @@ function set_options() {
 # Copy the hooks into the repository
 function copy_hooks() {
 	local REPO_PATH=$1
+	local FILES=("commit-msg" "post-commit" "timestamping.sh")
+	for f in "${FILES[@]}"; do
+		[[ ! -f "${REPO_PATH}/${f}" ]] || {
+			script_echo "ERROR: Could not copy the required files"; exit 4
+			}
+	done
 	cp ./hooks/* "${REPO_PATH}/.git/hooks/" >/dev/null || {
-		script_echo 'ERROR: Could not copy the required files'
+		script_echo "ERROR: Could not copy the required files"
 		exit 3
 	}
 }
@@ -142,7 +148,7 @@ function install_timestamping() {
 
 	(
 		cd "${REPO_PATH}" || {
-			script_echo 'ERROR: Could not enter the specified directory'
+			script_echo "ERROR: Could not enter the specified directory"
 			exit 2
 		}
 

@@ -93,7 +93,13 @@ function generate_timestamps() {
 	exit ${RETURN}
 }
 
-# shellcheck source=timestamping.sh
-source "$(dirname "$(realpath "$0")")/timestamping.sh"
+function ts-commit-msg() {
+	# shellcheck source=timestamping.sh
+	source "$(dirname "$(realpath "$0")")/timestamping.sh"
 
-if_enabled in_environment generate_timestamps "$1"
+	if_enabled in_environment generate_timestamps "$1"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+	ts-commit-msg "$1"
+fi

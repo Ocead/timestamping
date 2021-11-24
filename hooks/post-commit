@@ -65,7 +65,13 @@ function relate_timestamps() {
 	fi
 }
 
-# shellcheck source=timestamping.sh
-source "$(dirname "$(realpath "$0")")/timestamping.sh"
+function ts-post-commit() {
+	# shellcheck source=timestamping.sh
+	source "$(dirname "$(realpath "$0")")/timestamping.sh"
 
-if_enabled in_environment relate_timestamps
+	if_enabled in_environment relate_timestamps
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+	ts-post-commit
+fi
