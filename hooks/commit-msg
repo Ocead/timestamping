@@ -28,9 +28,9 @@ function hook_echo() {
 }
 
 function generate_timestamps() {
-	if [ $# -lt 1 ]; then
-  	die 'Call this script only through "git commit".'
-  fi
+	if [[ -z ${GIT_DIR+x} || $# -lt 1 ]]; then
+		die 'Call this script only through "git commit".'
+	fi
 
 	# Get current branch
 	local BRANCH
@@ -61,12 +61,12 @@ function generate_timestamps() {
 	STASH=$(maybe_stash)
 
 	# Create signing branch if non-existent
-	check_out_signing "${BRANCH}"
+	checkout_signing "${BRANCH}"
 
 	# Write diff file
 	write_diff "${DIFF}"
 
-	create_timestamps
+	create_timestamps "${BRANCH}"
 	RETURN=$?
 	if [[ ${RETURN} -eq 0 ]]; then
 		commit_timestamps "${BRANCH}"
@@ -76,7 +76,7 @@ function generate_timestamps() {
 	fi
 
 	# Checkout original branch
-	check_out_actual "${BRANCH}"
+	checkout_actual "${BRANCH}"
 
 	# Remove timestamping files
 	rm -rf "${TS_SERVER_DIRECTORY:?}/" "${TS_DIFF_FILE}" ".gitattributes"

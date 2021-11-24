@@ -317,7 +317,13 @@ function get_branch() {
 # Returns:
 # 	&1: The name of the signing branch
 function get_signing_branch() {
-	echo "${TS_BRANCH_PREFIX}/$1"
+	local BRANCH=$1
+
+	if [[ ! ${BRANCH} == "${TS_BRANCH_PREFIX}/"* && ! ${BRANCH} == "${TS_BRANCH_PREFIX}-" ]]; then
+		echo "${TS_BRANCH_PREFIX}/${BRANCH}"
+	else
+		echo "${BRANCH}"
+	fi
 }
 
 # Gets the name of best existing signing branch for the current one
@@ -346,7 +352,7 @@ function on_signing_branch() {
 # Checks out an actual branch, as orphan if necessary
 # Arguments:
 # 	$1: Name of the branch
-function check_out_actual() {
+function checkout_actual() {
 	local BRANCH=$1
 	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
 		hook_echo "Checking out ${BRANCH}"
@@ -360,7 +366,7 @@ function check_out_actual() {
 # Checks out a signing branch, branch if root signing if necessary
 # Arguments:
 # 	$1: Name of the branch
-function check_out_signing() {
+function checkout_signing() {
 	local SIGNING_BRANCH
 	SIGNING_BRANCH=$(get_signing_branch "$1")
 	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
@@ -459,29 +465,6 @@ function get_tsa_diff() {
 	return $?
 }
 
-# Writes data to the standard diff file
-# Arguments:
-# 	$1: The data to write
-function write_diff() {
-	local DIFF=$1
-	echo "${TS_DIFF_NOTICE}" >"${TS_DIFF_FILE}"
-	echo "${DIFF}" >>"${TS_DIFF_FILE}"
-	echo "" >>"${TS_DIFF_FILE}"
-}
-
-# Writes data to a TSA configuration's diff file
-# Arguments:
-# 	$1: The diff
-# 	$2: TSA configuration directory name
-function write_tsa_diff() {
-	local DIFF=$1
-	local SERVER_DIRECTORY=$2
-	local DIFF_FILE="${TS_SERVER_DIRECTORY}/${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}"
-	echo "${TS_DIFF_NOTICE}" >"${DIFF_FILE}"
-	echo "${DIFF}" >>"${DIFF_FILE}"
-	echo "" >>"${DIFF_FILE}"
-}
-
 # Checks if a diff file is well-formed
 # Arguments:
 # 	$1: Path to the diff file
@@ -491,7 +474,42 @@ function write_tsa_diff() {
 # 	1: Diff file is ill-formed
 function check_diff() {
 	local DIFF_FILE=$1
-	git apply --check "${DIFF_FILE}"
+	git apply --check "${DIFF_FILE}" >/dev/null 2>/dev/null
+	return $?
+}
+
+# Writes data to the standard diff file
+# Arguments:
+# 	$1: The data to write
+#
+# Returns:
+# 	0: Written diff is well-formed
+# 	1: Diff file is ill-formed
+function write_diff() {
+	local DIFF=$1
+	echo "${TS_DIFF_NOTICE}" >"${TS_DIFF_FILE}"
+	echo "${DIFF}" >>"${TS_DIFF_FILE}"
+	echo "" >>"${TS_DIFF_FILE}"
+	check_diff "${TS_DIFF_FILE}"
+	return $?
+}
+
+# Writes data to a TSA configuration's diff file
+# Arguments:
+# 	$1: The diff
+# 	$2: TSA configuration directory name
+#
+# Returns:
+# 	0: Written diff is well-formed
+# 	1: Diff file is ill-formed
+function write_tsa_diff() {
+	local DIFF=$1
+	local SERVER_DIRECTORY=$2
+	local DIFF_FILE="${TS_SERVER_DIRECTORY}/${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}"
+	echo "${TS_DIFF_NOTICE}" >"${DIFF_FILE}"
+	echo "${DIFF}" >>"${DIFF_FILE}"
+	echo "" >>"${DIFF_FILE}"
+	check_diff "${DIFF_FILE}"
 	return $?
 }
 # endregion
@@ -530,19 +548,20 @@ function relate_branches() {
 # endregion
 
 function comprehend_change() {
-	local d=$1
+	local BRANCH=$1
+	local SERVER_DIRECTORY=$2
 
 	local CERT0
 	local CERT1
 	local URL0
 	local URL1
-	CERT0=$(git rev-parse @~0:"${d}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT0=""
-	CERT1=$(git rev-parse @~1:"${d}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT1=""
-	URL0=$(git rev-parse @~0:"${d}${TS_SERVER_URL}" 2>/dev/null) || URL0=""
-	URL1=$(git rev-parse @~1:"${d}${TS_SERVER_URL}" 2>/dev/null) || URL1=""
+	CERT0=$(git rev-parse @~0:"${SERVER_DIRECTORY}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT0=""
+	CERT1=$(git rev-parse @~1:"${SERVER_DIRECTORY}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT1=""
+	URL0=$(git rev-parse @~0:"${SERVER_DIRECTORY}${TS_SERVER_URL}" 2>/dev/null) || URL0=""
+	URL1=$(git rev-parse @~1:"${SERVER_DIRECTORY}${TS_SERVER_URL}" 2>/dev/null) || URL1=""
 
 	local SERVER_DIR
-	SERVER_DIR=${d#*${TS_SERVER_DIRECTORY}/}
+	SERVER_DIR=${SERVER_DIRECTORY#*${TS_SERVER_DIRECTORY}/}
 	SERVER_DIR=${SERVER_DIR%/*}
 
 	# Added/Modified TSAs
@@ -554,17 +573,17 @@ function comprehend_change() {
 			hook_echo "Updating TSA ${SERVER_DIR} to branch ${b}"
 		fi
 
-		if [[ -f "${TS_DIFF_FILE}" ]] && create_timestamp "${TS_DIFF_FILE}" "${d}"; then
+		if [[ -f "${TS_DIFF_FILE}" ]] && create_timestamp  "${BRANCH}" "${TS_DIFF_FILE}" "${SERVER_DIRECTORY}"; then
 			return 0
 		fi
 	fi
 
 	# Removed TSAs
-	if [[ ! -f "${d}/${TS_SERVER_CERTIFICATE}" ]] &&
-		[[ ! -f ".${d}/${TS_SERVER_URL}" ]]; then
+	if [[ ! -f "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" ]] &&
+		[[ ! -f ".${SERVER_DIRECTORY}/${TS_SERVER_URL}" ]]; then
 		hook_echo "Removing TSA ${SERVER_DIR} from branch ${b}"
-		git rm "${d}/${TS_REQUEST_FILE}" \
-			".${d}/${TS_RESPONSE_FILE}"
+		git rm "${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
+			".${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}"
 	fi
 
 	return 1
@@ -572,9 +591,9 @@ function comprehend_change() {
 
 # Creates a timestamp for a single TSA configuration
 # Arguments:
-# 	$1 Path to file to be timestamped
-# 	$2 Path to the TSA configuration directory
-#   $3 URL of the server
+# 	$1 Actual branch
+# 	$2 Path to file to be signed
+# 	$3 Path to the TSA configuration directory
 #
 # Returns:
 # 	0 on success
@@ -582,18 +601,32 @@ function comprehend_change() {
 # 	2 on reply error
 # 	3 on query error
 function create_timestamp() {
-	local DATA_FILE=$1
-	local SERVER_DIRECTORY=$2
+	local BRANCH=$1
+	local DATA_FILE=$2
+	local SERVER_DIRECTORY=$3
+	local SIGNING_BRANCH
 
 	local SERVER_DIR=${SERVER_DIRECTORY#*${TS_SERVER_DIRECTORY}/}
 	SERVER_DIR=${SERVER_DIR%/*}
 
+	SIGNING_BRANCH=$(get_signing_branch "${BRANCH}")
+
 	if [[ "${SERVER_DIR}" == "*" ]]; then
-		return 4
+		return 5
 	fi
 
 	if [[ ! -f "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" ]]; then
-		return 4
+		return 5
+	fi
+
+	if [[ -f "${SERVER_DIRECTORY}/${TS_DIFF_FILE}.sh" ]]; then
+		local DIFF
+
+		DATA_FILE="${SERVER_DIRECTORY}/${TS_DIFF_FILE}"
+		DIFF=$(get_tsa_diff "${SIGNING_BRANCH}" "${SERVER_DIRECTORY}")
+		if ! write_tsa_diff "${DIFF}" "${SERVER_DIRECTORY}"; then
+			return 4
+		fi
 	fi
 
 	# Create timestamp request
@@ -623,7 +656,7 @@ function create_timestamp() {
 
 function commit_timestamps() {
 	# Checkout signing branch
-	check_out_signing "$1"
+	checkout_signing "$1"
 
 	# Add timestamp files to stage
 	hook_echo "Committing timestamps"
@@ -635,12 +668,13 @@ function commit_timestamps() {
 }
 
 function create_timestamps() {
+	local BRANCH=$1
 	local RETURN=0
 	local SIG_COUNT=0
 
 	# Loop for each timestamping server
 	for d in "${TS_SERVER_DIRECTORY}/"*/; do
-		create_timestamp "${TS_DIFF_FILE}" "${d}"
+		create_timestamp "${BRANCH}" "${TS_DIFF_FILE}" "${d}"
 		case $? in
 		0) SIG_COUNT=$((SIG_COUNT + 1)) ;;
 		1) RETURN=1 ;;
@@ -688,7 +722,7 @@ function update_timestamps() {
 		merge_branches "${COMMIT_ID}"
 
 		for d in "${TS_SERVER_DIRECTORY}/"*/; do
-			if comprehend_change "${d}"; then
+			if comprehend_change "${b}" "${d}"; then
 				SIG_COUNT=$((SIG_COUNT + 1))
 			fi
 		done

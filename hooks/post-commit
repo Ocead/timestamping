@@ -49,7 +49,7 @@ function relate_timestamps() {
 			local STASH
 			maybe_stash
 			STASH=$?
-			git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
+			checkout_signing "${BRANCH}"
 
 			hook_echo "Merging ${BRANCH} into ${SIGNING_BRANCH}"
 			relate_branches "Relate commit '${COMMIT_ID}' to ${SIGNING_BRANCH}" "${COMMIT_ID}"
@@ -59,12 +59,12 @@ function relate_timestamps() {
 				rm "${PWD}/.git/TIMESTAMP"
 			fi
 
-			git checkout "${BRANCH}" >/dev/null 2>/dev/null
+			checkout_actual "${BRANCH}"
 
 			maybe_unstash ${STASH}
 		else
 			hook_echo "Checking out new signing branch"
-			git checkout --orphan "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
+			checkout_signing "${BRANCH}"
 		fi
 	fi
 }
