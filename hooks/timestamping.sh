@@ -163,6 +163,17 @@ function create_timestamp_request() {
 function get_timestamp_response() {
 	local SERVER_DIRECTORY=$1
 
+	local SERVER_DIR=${SERVER_DIRECTORY#*${TS_SERVER_DIRECTORY}/}
+	SERVER_DIR=${SERVER_DIR%/*}
+
+	local SERVER_URL
+	if [[ -f "${SERVER_DIRECTORY}/${TS_SERVER_URL}" ]]; then
+		SERVER_URL=$(cat "${SERVER_DIRECTORY}/${TS_SERVER_URL}")
+	else
+		SERVER_URL="http://${SERVER_DIR}"
+	fi
+	hook_echo "Generating timestamp for ${SERVER_DIR} at ${SERVER_URL}"
+
 	curl --silent \
 		--header 'Content-Type: application/timestamp-query' \
 		"${TS_RESPONSE_OPTIONS[@]}" \
@@ -205,11 +216,11 @@ function verify_timestamp() {
 # 	0 No changes were stashed
 # 	1 Changes were stashed
 function maybe_stash() {
-	if ! git diff --cached --quiet --exit-code HEAD; then
-		git stash push
-		return 1
-	else
+	if git rev-parse HEAD >/dev/null 2>/dev/null && git diff --cached --quiet --exit-code HEAD; then
+		git stash push >/dev/null 2>/dev/null
 		return 0
+	else
+		return 1
 	fi
 }
 
@@ -464,14 +475,6 @@ function create_timestamp() {
 	if [[ ! -f "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" ]]; then
 		return 4
 	fi
-
-	local SERVER_URL
-	if [[ -f "${SERVER_DIRECTORY}/${TS_SERVER_URL}" ]]; then
-		SERVER_URL=$(cat "${SERVER_DIRECTORY}/${TS_SERVER_URL}")
-	else
-		SERVER_URL="http://${SERVER_DIR}"
-	fi
-	hook_echo "Generating timestamp for ${SERVER_DIR} at ${SERVER_URL}"
 
 	# Create timestamp request
 	create_timestamp_request "${DATA_FILE}" "${SERVER_DIRECTORY}" || return 3

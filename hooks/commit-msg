@@ -57,7 +57,8 @@ function generate_timestamps() {
 	COMMIT_MSG=$(cat "${COMMIT_MSG_FILE}")
 
 	# Stash changes to be committed
-	! git rev-parse HEAD >/dev/null 2>/dev/null || git stash >/dev/null 2>/dev/null
+	local STASH
+	STASH=$(maybe_stash)
 
 	# Create signing branch if non-existent
 	check_out_signing "${BRANCH}"
@@ -65,8 +66,14 @@ function generate_timestamps() {
 	# Write diff file
 	write_diff "${DIFF}"
 
-	create_and_commit_timestamps
+	create_timestamps
 	RETURN=$?
+	if [[ ${RETURN} -eq 0 ]]; then
+		commit_timestamps "${BRANCH}"
+	else
+		hook_echo "No timestamps to commit"
+		rm "${TS_DIFF_FILE}" >/dev/null
+	fi
 
 	# Checkout original branch
 	check_out_actual "${BRANCH}"
@@ -79,7 +86,7 @@ function generate_timestamps() {
 	echo "${COMMIT_MSG}" >"${COMMIT_MSG_FILE}"
 
 	# Unstash changes to be committed
-	! git rev-parse HEAD >/dev/null 2>/dev/null || git stash pop >/dev/null 2>/dev/null
+	maybe_unstash "${STASH}"
 
 	# Wait one second for different commit timestamps
 	sleep 1s
