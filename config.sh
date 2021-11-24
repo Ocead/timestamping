@@ -9,7 +9,8 @@ function script_echo() {
 # Prints help
 function print_help() {
 	# Print help
-	echo "$(basename "$0") [<OPTIONS>] <PATH> -- installs automated timestamping into a git repository
+	echo "$(basename "$0") [<OPTIONS>] <PATH>
+Installs automated timestamping into a git repository
 
 Options:
     -d, --default install with default options
@@ -36,6 +37,8 @@ function prompt_options() {
 	read -r -p "Enter the timestamp response file name [response.tsr]: " TS_RESPONSE_FILE
 	read -r -p "Enter the timestamp response options []: " TS_RESPONSE_OPTIONS
 	read -r -p "Enter whether timestamps should be verified [true]: " TS_RESPONSE_VERIFY
+
+	read -r -p "Enter whether timestamps should be withheld from remotes [false]: " TS_PUSH_WITHHOLD
 }
 
 # Sets all git config options
@@ -60,6 +63,8 @@ function set_options() {
 	git config ts.respone.file "${TS_RESPONSE_FILE:-"response.tsr"}"
 	git config ts.respone.options "${TS_RESPONSE_OPTIONS:-""}"
 	git config ts.respone.verify "${TS_RESPONSE_VERIFY:-"true"}"
+
+	git config ts.push.withhold "${TS_PUSH_WITHHOLD:-"true"}"
 }
 
 # Copy the hooks into the repository

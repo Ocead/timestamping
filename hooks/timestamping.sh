@@ -59,6 +59,8 @@ function in_environment() {
 	local TS_RESPONSE_OPTIONS=()
 	local TS_RESPONSE_VERIFY
 
+	local TS_PUSH_WITHHOLD
+
 	if [[ -z ${TS_ENVIRONMENT_SET+x} ]]; then
 		if ! TS_BRANCH_PREFIX=$(git config ts.branch.prefix); then
 			echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
@@ -114,6 +116,11 @@ function in_environment() {
 		fi
 		if ! TS_RESPONSE_VERIFY=$(git config ts.respone.verify); then
 			echo 'Run "git config ts.response.verify" to set whether the timestamp response file is verified after'
+			RETURN=2
+		fi
+
+		if ! TS_PUSH_WITHHOLD=$(git config ts.push.withhold); then
+			echo 'Run "git config ts.push.withhold" to set whether timestamp commits should be withheld from remotes'
 			RETURN=2
 		fi
 
@@ -261,6 +268,29 @@ function check_out_signing_or_root() {
 		git checkout "${SIGNING_BRANCH}" -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
 	else
 		git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null
+	fi
+}
+
+function is_timestamping_only_object() {
+	local ACTUAL=0
+	local OUTPUT
+	local BRANCHES=()
+	local TS_BRANCHES=()
+	mapfile -t BRANCHES < <(git branch --contains "${LOCAL_OID}" | tr -d " *")
+	for b in "${BRANCHES[@]}"; do
+		if [[ ${b} != "${TS_BRANCH_PREFIX}-" && ${b} != "${TS_BRANCH_PREFIX}/"* ]]; then
+			ACTUAL=$((ACTUAL + 1))
+		else
+			TS_BRANCHES+=("${b}")
+		fi
+	done
+	printf -v OUTPUT '%s, ' "${TS_BRANCHES[@]}"
+	echo "${OUTPUT%", "}"
+
+	if [ ${ACTUAL} -eq 0 ]; then
+		return 1
+	else
+		return 0
 	fi
 }
 # endregion

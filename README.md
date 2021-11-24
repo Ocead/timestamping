@@ -37,9 +37,10 @@ to:
 
 1. Copy the contents of [hooks](hooks) directory into the `.git/hooks` directory of the target repository.
 2. Set the options described in the [options](#options) section for at least the target repository.
-3. If you already have the hooks `commit-msg` or `post-commit` in place:
-   1. (`source` this software's renamed hook file)
-   2. Call the `ts-commit-msg` or `ts-post-commit` function with the arguments the respective hook expects.
+3. If you already have the hooks `commit-msg`, `post-commit`, `pre-push` in place, in your hooks:
+    1. `source` this software's renamed respective hook file
+    2. Call the `ts-commit-msg`/`ts-post-commit`/`ts-pre-push` function with the arguments the
+       respective hook expects.
 
 > ℹ Note: if the script was installed into `.git/hooks` it is technically not part of the repository
 > and will therefore **not** be versioned through commits **nor** sent to remotes through pushes.
@@ -151,10 +152,10 @@ in [RFC 3161 Section 3.4](https://www.rfc-editor.org/rfc/rfc3161.html#section-3.
 You can configure an arbitrary number of individual TSA for each repository. To configure a new timestamping server for
 a repository where this software is installed to, do the following steps:
 
-1. Check out the branch specified in `ts.branch.prefix` (`sig` by default).<br/>
+1. Check out the branch specified through `ts.branch.prefix` (`sig-` by default).<br/>
    Example:
    ```shell
-   git checkout sig
+   git checkout sig-
    ```
 
 2. In there, navigate to the server specified in `ts.server.directory` (`rfc3161` by default) and create a new
@@ -226,6 +227,7 @@ git config <option> "<value>"
 |`ts.response.file`|Name of the received timestamp response file.|`"response.tsr"`|
 |`ts.response.options`|Options for requesting the timestamp from the server through `curl`.|`""`|
 |`ts.response.verify`|Whether the received timestamp should be verified against the diff and request file.<br/>May be `true` or `false`.|`"true"`|
+|`ts.push.withhold`|Whether timestamping commits should be withheld from remotes.<br/>If `true`, [git-push](https://git-scm.com/docs/git-push) will fail for timestamping branches.|`"true"`|
 |`ts.enabled`|Whether automated timestamping should be triggered on commits.<br/>May be `true` or `false`.|`"true"`|
 
 > ⚠ Warning: Set the paths and filenames so that they don't interfere with what you plan to commit.
@@ -238,9 +240,12 @@ git config <option> "<value>"
 * [x] Custom timestamp response options
 * [x] Referencing actual commits in timestamping branches
 * [x] Automatically redoing timestamps upon configuration changes
-* [ ] TSA-specific/dynamic data providers
+* [x] Withholding timestamping commits from remotes
+* [ ] Prevent merging timestamping commits into actual branches
+* [ ] Custom diff and timestamp generation per TSA
 * [ ] Trusted timestamps after commits
+* [ ] Reducing checkouts in hooks
 
 ## License
 
-This software is released under the [Lesser GNU Public License v3](LICENSE).
+This software is released under the [MIT License](LICENSE).
