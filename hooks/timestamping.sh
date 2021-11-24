@@ -254,33 +254,22 @@ function on_signing_branch() {
 function check_out_actual() {
 	local BRANCH=$1
 	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
-		hook_echo "Restoring stage on ${BRANCH}"
+		hook_echo "Checking out ${BRANCH}"
 		git checkout "${BRANCH}" >/dev/null 2>/dev/null
 	else
-		hook_echo "Restoring stage on orphaned ${BRANCH}"
+		hook_echo "Checking out orphaned ${BRANCH}"
 		git checkout --orphan "${BRANCH}" >/dev/null 2>/dev/null
 	fi
 }
 
 function check_out_signing() {
-	hook_echo "Switch to signing branch"
 	local SIGNING_BRANCH
 	SIGNING_BRANCH=$(get_signing_branch "$1")
 	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
 		git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
 	else
-		git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
-	fi
-}
-
-function check_out_signing_or_root() {
-	hook_echo "Switch to signing branch"
-	local SIGNING_BRANCH
-	SIGNING_BRANCH=$(get_signing_branch "$1")
-	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
-		git checkout "${SIGNING_BRANCH}" -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
-	else
 		git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null
+		git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
 	fi
 }
 
@@ -373,8 +362,7 @@ function add_ts_files() {
 		--force \
 		-- \
 		"${TS_DIFF_FILE}" \
-		"${TS_SERVER_DIRECTORY}/"* \
-		>/dev/null 2>/dev/null
+		"${TS_SERVER_DIRECTORY}/"*
 }
 
 function commit_ts_files() {

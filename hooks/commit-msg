@@ -60,7 +60,7 @@ function generate_timestamps() {
 	! git rev-parse HEAD >/dev/null 2>/dev/null || git stash >/dev/null 2>/dev/null
 
 	# Create signing branch if non-existent
-	check_out_signing_or_root "${BRANCH}"
+	check_out_signing "${BRANCH}"
 
 	# Write diff file
 	write_diff "${DIFF}"
