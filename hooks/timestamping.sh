@@ -28,8 +28,7 @@ function if_enabled() {
 	TS_ENABLED=$(git config --get ts.enabled)
 
 	if [[ ${TS_ENABLED} == "true" ]]; then
-		# shellcheck disable=SC2068
-		$@
+		eval "$@"
 		return $?
 	fi
 
@@ -37,6 +36,7 @@ function if_enabled() {
 }
 
 function in_environment() {
+	shopt -s extglob
 	. "$(git --exec-path)/git-sh-setup"
 
 	local RETURN=0
@@ -129,16 +129,21 @@ function in_environment() {
 		fi
 
 		TS_ENVIRONMENT_SET=
-		# shellcheck disable=SC2068
-		$@
+		eval "$@"
 		RETURN=$?
 		unset TS_ENVIRONMENT_SET
 		return ${RETURN}
 	else
-		# shellcheck disable=SC2068
-		$@
+		eval "$@"
 		return $?
 	fi
+}
+# endregion
+
+# region Objects
+function canonize() {
+	LOCAL -n PATH
+	echo "${PATH}" | sed s#//*#/#g
 }
 # endregion
 
@@ -233,6 +238,14 @@ function get_signing_branch() {
 	echo "${TS_BRANCH_PREFIX}/$1"
 }
 
+function get_actual_signing_branch() {
+	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
+		echo "${TS_BRANCH_PREFIX}/$1"
+	else
+		echo "${TS_BRANCH_PREFIX}-"
+	fi
+}
+
 function on_signing_branch() {
 	[[ ${BRANCH} == ${TS_BRANCH_PREFIX}/* || ${BRANCH} == "${TS_BRANCH_PREFIX}-" ]]
 	return $?
@@ -293,6 +306,20 @@ function is_timestamping_only_object() {
 		return 0
 	fi
 }
+
+function echo_tsa_list() {
+	local BRANCH=$1
+	local TSA_LIST=()
+	local SIGNING_BRANCH
+	SIGNING_BRANCH=$(get_actual_signing_branch "${BRANCH}")
+	mapfile -t TSA_LIST < <(git ls-tree -r --name-only "${SIGNING_BRANCH}" | grep -w "${TS_SERVER_CERTIFICATE}" --color=never)
+	for i in "${!TSA_LIST[@]}"; do
+		TSA_LIST[${i}]="${TSA_LIST[${i}]#"${TS_SERVER_DIRECTORY}/"}"
+		TSA_LIST[${i}]="${TSA_LIST[${i}]%"/${TS_SERVER_CERTIFICATE}"}"
+	done
+
+	echo "${TSA_LIST[@]}"
+}
 # endregion
 
 # region Diffs
@@ -308,10 +335,35 @@ function get_diff() {
 	fi
 }
 
+function get_tsa_diff() {
+	local BRANCH=$1
+	local DIFF_PROVIDER
+	DIFF_PROVIDER=$(git show "${TS_SERVER_DIRECTORY}/${BRANCH}/${TS_SERVER_CERTIFICATE}")
+	eval "$DIFF_PROVIDER"
+	return $?
+}
+
 function write_diff() {
+	local DIFF=$1
 	echo "${TS_DIFF_NOTICE}" >"${TS_DIFF_FILE}"
-	echo "$1" >>"${TS_DIFF_FILE}"
+	echo "${DIFF}" >>"${TS_DIFF_FILE}"
 	echo "" >>"${TS_DIFF_FILE}"
+}
+
+function write_tsa_diff() {
+	local DIFF=$1
+	local BRANCH=$2
+	local DIFF_FILE="${TS_SERVER_DIRECTORY}/${BRANCH}/${TS_SERVER_CERTIFICATE}"
+	echo "${TS_DIFF_NOTICE}" >"${DIFF_FILE}"
+	echo "${DIFF}" >>"${DIFF_FILE}"
+	echo "" >>"${DIFF_FILE}"
+}
+
+function check_diff() {
+	local DIFF=$1
+
+	git apply --check - <<<"${DIFF}"
+	return $?
 }
 # endregion
 
