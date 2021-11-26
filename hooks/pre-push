@@ -27,7 +27,7 @@ function hook_echo() {
 	echo -e "[\e[0;32m${TAG}\e[0m]: $1"
 }
 
-function maybe_withhold() {
+function ts-pre-push_impl() {
 	if [ $# -lt 2 ]; then
 		echo "$#"
 		die 'Call this script only through "git push".'
@@ -60,7 +60,7 @@ function ts-pre-push() {
 	# shellcheck source=timestamping.sh
 	source "$(dirname "$(realpath "$0")")/timestamping.sh"
 
-	if_enabled in_environment maybe_withhold "$@"
+	if_enabled in_environment ts-pre-push_impl "$@"
 	return $?
 }
 

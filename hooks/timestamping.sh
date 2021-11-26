@@ -206,7 +206,8 @@ function get_file() {
 	local BRANCH=$1
 	local PATH
 	PATH=$(canonize "$2")
-	git show "${BRANCH}:${PATH}"
+	git show "${BRANCH}:${PATH}" 2>/dev/null
+	return $?
 }
 # endregion
 
@@ -294,6 +295,145 @@ function verify_timestamp() {
 	fi
 
 	return $TS_OK
+}
+
+# Creates a timestamp for a single TSA configuration
+# Arguments:
+# 	$1 Actual branch
+# 	$2 Path to file to be signed
+# 	$3 Path to the TSA configuration directory
+#
+# Returns:
+# 	0 on success
+# 	1 on verify error
+# 	2 on reply error
+# 	3 on query error
+function create_timestamp() {
+	local BRANCH=$1
+	local DATA_FILE=$2
+	local SERVER_DIRECTORY=$3
+	local SIGNING_BRANCH
+
+	local SERVER_DIR=${SERVER_DIRECTORY#*${TS_SERVER_DIRECTORY}/}
+	SERVER_DIR=${SERVER_DIR%/*}
+
+	SIGNING_BRANCH=$(get_signing_branch "${BRANCH}")
+
+	if [[ "${SERVER_DIR}" == "*" ]]; then
+		return 5
+	fi
+
+	if [[ ! -f "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" ]]; then
+		return 5
+	fi
+
+	if [[ -f "${SERVER_DIRECTORY}/${TS_DIFF_FILE}.sh" ]]; then
+		local DIFF
+
+		DATA_FILE="${SERVER_DIRECTORY}/${TS_DIFF_FILE}"
+		DIFF=$(get_tsa_diff "${SIGNING_BRANCH}" "${SERVER_DIRECTORY}")
+		if ! write_tsa_diff "${DIFF}" "${SERVER_DIRECTORY}"; then
+			return 4
+		fi
+	fi
+
+	# Create timestamp request
+	create_timestamp_request "${DATA_FILE}" "${SERVER_DIRECTORY}" || return $TS_ERROR_REQUEST
+
+	# Get timestamp response
+	get_timestamp_response "${SERVER_DIRECTORY}" || return $TS_ERROR_RESPONSE
+
+	# Run verifications if set
+	if [[ "${TS_RESPONSE_VERIFY}" == "true" ]]; then
+		local RESULT
+		verify_timestamp \
+			"${DATA_FILE}" \
+			"${SERVER_DIRECTORY}"
+		RESULT=$?
+		case ${RESULT} in
+		$TS_ERROR_VERIFY_REQUEST) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against request!" ;;
+		$TS_ERROR_VERIFY_DATA) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against diff!" ;;
+		0) ;;
+		esac
+
+		return "${RESULT}"
+	fi
+
+	return $TS_OK
+}
+
+function create_timestamps() {
+	local BRANCH=$1
+	local RETURN=0
+	local SIG_COUNT=0
+
+	# Loop for each timestamping server
+	for d in "${TS_SERVER_DIRECTORY}/"*/; do
+		create_timestamp "${BRANCH}" "${TS_DIFF_FILE}" "${d}"
+		case $? in
+		0) SIG_COUNT=$((SIG_COUNT + 1)) ;;
+		1) RETURN=1 ;;
+		2) RETURN=1 ;;
+		*) ;;
+		esac
+	done
+
+	# Check if any signature was generated
+	if [[ ${SIG_COUNT} -gt 0 ]] && [[ ${RETURN} -eq 0 ]]; then
+		return $TS_OK
+	else
+		return $TS_ERROR
+	fi
+}
+
+function update_timestamps() {
+	local COMMIT_ID=$1
+	local BRANCH=$2
+
+	local REVS
+	local BRANCHES=()
+	local IFS
+
+	mapfile -t REVS < <(git branch --contains "$(git rev-list --max-parents=0 HEAD)" 2>/dev/null | tr -d " *")
+
+	for i in "${!REVS[@]}"; do
+		if [[ "${REVS[$i]}" == "${TS_BRANCH_PREFIX}/"* ]]; then
+			BRANCHES+=("${REVS[$i]}")
+		fi
+	done
+
+	IFS=" "
+	read -r -a BRANCHES <<<"$(tr ' ' '\n' <<<"${BRANCHES[@]}" | sort -u | tr '\n' ' ')"
+
+	local STASH
+	maybe_stash
+	STASH=$?
+
+	local SIG_COUNT=0
+
+	for b in "${BRANCHES[@]}"; do
+		hook_echo "Applying TSA changes to ${b}"
+		git checkout "${b}" >/dev/null 2>/dev/null
+		merge_branches "${COMMIT_ID}"
+
+		for d in "${TS_SERVER_DIRECTORY}/"*/; do
+			if comprehend_change "${b}" "${d}"; then
+				SIG_COUNT=$((SIG_COUNT + 1))
+			fi
+		done
+
+		if [[ ${SIG_COUNT} -gt 0 ]]; then
+			hook_echo "Committing timestamps"
+			add_ts_files
+			amend_ts_files "Applied updates from '${COMMIT_ID}' to ${b}"
+		else
+			hook_echo "No timestamps to amend"
+			rm "${TS_DIFF_FILE}" >/dev/null
+		fi
+	done
+
+	git checkout "${BRANCH}" >/dev/null 2>/dev/null
+	maybe_unstash ${STASH}
 }
 # endregion
 
@@ -619,71 +759,6 @@ function comprehend_change() {
 	return $TS_ERROR
 }
 
-# Creates a timestamp for a single TSA configuration
-# Arguments:
-# 	$1 Actual branch
-# 	$2 Path to file to be signed
-# 	$3 Path to the TSA configuration directory
-#
-# Returns:
-# 	0 on success
-# 	1 on verify error
-# 	2 on reply error
-# 	3 on query error
-function create_timestamp() {
-	local BRANCH=$1
-	local DATA_FILE=$2
-	local SERVER_DIRECTORY=$3
-	local SIGNING_BRANCH
-
-	local SERVER_DIR=${SERVER_DIRECTORY#*${TS_SERVER_DIRECTORY}/}
-	SERVER_DIR=${SERVER_DIR%/*}
-
-	SIGNING_BRANCH=$(get_signing_branch "${BRANCH}")
-
-	if [[ "${SERVER_DIR}" == "*" ]]; then
-		return 5
-	fi
-
-	if [[ ! -f "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" ]]; then
-		return 5
-	fi
-
-	if [[ -f "${SERVER_DIRECTORY}/${TS_DIFF_FILE}.sh" ]]; then
-		local DIFF
-
-		DATA_FILE="${SERVER_DIRECTORY}/${TS_DIFF_FILE}"
-		DIFF=$(get_tsa_diff "${SIGNING_BRANCH}" "${SERVER_DIRECTORY}")
-		if ! write_tsa_diff "${DIFF}" "${SERVER_DIRECTORY}"; then
-			return 4
-		fi
-	fi
-
-	# Create timestamp request
-	create_timestamp_request "${DATA_FILE}" "${SERVER_DIRECTORY}" || return $TS_ERROR_REQUEST
-
-	# Get timestamp response
-	get_timestamp_response "${SERVER_DIRECTORY}" || return $TS_ERROR_RESPONSE
-
-	# Run verifications if set
-	if [[ "${TS_RESPONSE_VERIFY}" == "true" ]]; then
-		local RESULT
-		verify_timestamp \
-			"${DATA_FILE}" \
-			"${SERVER_DIRECTORY}"
-		RESULT=$?
-		case ${RESULT} in
-		$TS_ERROR_VERIFY_REQUEST) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against request!" ;;
-		$TS_ERROR_VERIFY_DATA) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against diff!" ;;
-		0) ;;
-		esac
-
-		return "${RESULT}"
-	fi
-
-	return $TS_OK
-}
-
 function commit_timestamps() {
 	# Checkout signing branch
 	checkout_signing "$1"
@@ -695,78 +770,4 @@ function commit_timestamps() {
 	# Commit timestamp files
 	commit_ts_files "${TS_COMMIT_PREFIX}${COMMIT_MSG}"
 	touch "${GIT_DIR}/TIMESTAMP"
-}
-
-function create_timestamps() {
-	local BRANCH=$1
-	local RETURN=0
-	local SIG_COUNT=0
-
-	# Loop for each timestamping server
-	for d in "${TS_SERVER_DIRECTORY}/"*/; do
-		create_timestamp "${BRANCH}" "${TS_DIFF_FILE}" "${d}"
-		case $? in
-		0) SIG_COUNT=$((SIG_COUNT + 1)) ;;
-		1) RETURN=1 ;;
-		2) RETURN=1 ;;
-		*) ;;
-		esac
-	done
-
-	# Check if any signature was generated
-	if [[ ${SIG_COUNT} -gt 0 ]] && [[ ${RETURN} -eq 0 ]]; then
-		return $TS_OK
-	else
-		return $TS_ERROR
-	fi
-}
-
-function update_timestamps() {
-	local COMMIT_ID=$1
-	local BRANCH=$2
-
-	local REVS
-	local BRANCHES=()
-	local IFS
-
-	mapfile -t REVS < <(git branch --contains "$(git rev-list --max-parents=0 HEAD)" 2>/dev/null | tr -d " *")
-
-	for i in "${!REVS[@]}"; do
-		if [[ "${REVS[$i]}" == "${TS_BRANCH_PREFIX}/"* ]]; then
-			BRANCHES+=("${REVS[$i]}")
-		fi
-	done
-
-	IFS=" "
-	read -r -a BRANCHES <<<"$(tr ' ' '\n' <<<"${BRANCHES[@]}" | sort -u | tr '\n' ' ')"
-
-	local STASH
-	maybe_stash
-	STASH=$?
-
-	local SIG_COUNT=0
-
-	for b in "${BRANCHES[@]}"; do
-		hook_echo "Applying TSA changes to ${b}"
-		git checkout "${b}" >/dev/null 2>/dev/null
-		merge_branches "${COMMIT_ID}"
-
-		for d in "${TS_SERVER_DIRECTORY}/"*/; do
-			if comprehend_change "${b}" "${d}"; then
-				SIG_COUNT=$((SIG_COUNT + 1))
-			fi
-		done
-
-		if [[ ${SIG_COUNT} -gt 0 ]]; then
-			hook_echo "Committing timestamps"
-			add_ts_files
-			amend_ts_files "Applied updates from '${COMMIT_ID}' to ${b}"
-		else
-			hook_echo "No timestamps to amend"
-			rm "${TS_DIFF_FILE}" >/dev/null
-		fi
-	done
-
-	git checkout "${BRANCH}" >/dev/null 2>/dev/null
-	maybe_unstash ${STASH}
 }
