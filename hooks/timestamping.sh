@@ -24,6 +24,24 @@
 
 # region Environment setup
 
+# Error codes
+TS_ERROR_CALL=128
+
+TS_ERROR_WITHHOLD=9
+
+TS_ERROR_REQUEST=8
+TS_ERROR_RESPONSE=7
+TS_ERROR_VERIFY_REQUEST=6
+TS_ERROR_VERIFY_DATA=5
+
+TS_ERROR_ROOT_BRANCH=4
+
+TS_ERROR_CONFIG_INVALID=3
+TS_ERROR_CONFIG_UNSET=2
+
+TS_ERROR=1
+TS_OK=0
+
 # If timestamping is enabled runs the command passed via arguments
 # Arguments:
 # 	$@: Command to run
@@ -40,7 +58,7 @@ function if_enabled() {
 		return $?
 	fi
 
-	return 0
+	return $TS_OK
 }
 
 # Runs a command passed via arguments after setting up variables for all timestamping options
@@ -54,7 +72,7 @@ function in_environment() {
 	shopt -s extglob
 	. "$(git --exec-path)/git-sh-setup"
 
-	local RETURN=0
+	local RETURN=$TS_OK
 
 	local TS_BRANCH_PREFIX
 	local TS_COMMIT_PREFIX
@@ -79,67 +97,76 @@ function in_environment() {
 	if [[ -z ${TS_ENVIRONMENT_SET+x} ]]; then
 		if ! TS_BRANCH_PREFIX=$(git config ts.branch.prefix); then
 			echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
 		if ! TS_COMMIT_PREFIX=$(git config ts.commit.prefix); then
 			echo 'Run "git config ts.commit.prefix" to set the signing commit message prefix'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
 
 		if ! TS_DIFF_NOTICE=$(git config ts.diff.notice); then
 			echo 'Run "git config ts.diff.notice" to set the notice in the diff header'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
 		if ! TS_DIFF_FILE=$(git config ts.diff.file); then
 			echo 'run "git config ts.diff.file" to set the name of the generated diff file'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
 		if ! TS_DIFF_TYPE=$(git config ts.diff.type); then
 			echo 'run "git config ts.diff.type" to set how the diff is created'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
+		elif [[ ${TS_DIFF_TYPE} != "staged" && ${TS_DIFF_TYPE} != "full" ]]; then
+			echo 'ERROR: ts.diff.type must be wither "staged" or "full"'
+			RETURN $TS_ERROR_CONFIG_INVALID
 		fi
 
 		if ! TS_SERVER_DIRECTORY=$(git config ts.server.directory); then
 			echo 'Run "git config ts.server.directory" to set the directory name of the the timestamping.sh server configs'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
 		if ! TS_SERVER_URL=$(git config ts.server.url); then
 			echo 'Run "git config ts.server.url" to set the name of the file containing the timestamping.sh server url'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
 		if ! TS_SERVER_CERTIFICATE=$(git config ts.server.certificate); then
 			echo 'Run "git config ts.server.certificate" to set the name of the timestamping.sh server certificate file'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
 
 		if ! TS_REQUEST_FILE=$(git config ts.request.file); then
 			echo 'Run "git config ts.request.file" to set the name of the timestamp request file'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
 		if ! mapfile -d " " -t TS_REQUEST_OPTIONS < <(git config ts.request.options | tr -d '\n'); then
 			echo 'Run "git config ts.request.options" to set the options for creating the timestamp request file'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
 
 		if ! TS_RESPONSE_FILE=$(git config ts.respone.file); then
 			echo 'Run "git config ts.response.file" to set the name of the timestamp response file'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
 		if ! mapfile -d " " -t TS_RESPONSE_OPTIONS < <(git config ts.respone.options | tr -d '\n'); then
 			echo 'Run "git config ts.response.options" to set the options for curling the timestamp response file'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
 		if ! TS_RESPONSE_VERIFY=$(git config ts.respone.verify); then
 			echo 'Run "git config ts.response.verify" to set whether the timestamp response file is verified after'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
+		elif [[ ${TS_RESPONSE_VERIFY} != "true" && ${TS_RESPONSE_VERIFY} != "false" ]]; then
+			echo 'ERROR: ts.response.verify must be wither "true" or "false"'
+			RETURN $TS_ERROR_CONFIG_INVALID
 		fi
 
 		if ! TS_PUSH_WITHHOLD=$(git config ts.push.withhold); then
 			echo 'Run "git config ts.push.withhold" to set whether timestamp commits should be withheld from remotes'
-			RETURN=2
+			RETURN=$TS_ERROR_CONFIG_UNSET
+		elif [[ ${TS_PUSH_WITHHOLD} != "true" && ${TS_PUSH_WITHHOLD} != "false" ]]; then
+			echo 'ERROR: ts.push.withhold must be wither "true" or "false"'
+			RETURN $TS_ERROR_CONFIG_INVALID
 		fi
 
-		if [[ ${RETURN} -ne 0 ]]; then
+		if [[ ${RETURN} -ne $TS_OK ]]; then
 			return ${RETURN}
 		fi
 
@@ -254,7 +281,7 @@ function verify_timestamp() {
 		-queryfile "${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
 		-CAfile "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" \
 		>/dev/null 2>/dev/null; then
-		return 2
+		return $TS_ERROR_VERIFY_REQUEST
 	fi
 
 	# Verify timestamp against data
@@ -263,10 +290,10 @@ function verify_timestamp() {
 		-data "${DATA_FILE}" \
 		-CAfile "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" \
 		>/dev/null 2>/dev/null; then
-		return 1
+		return $TS_ERROR_VERIFY_REQUEST
 	fi
 
-	return 0
+	return $TS_OK
 }
 # endregion
 
@@ -437,12 +464,12 @@ function echo_tsa_list() {
 function get_diff() {
 	if [[ "${TS_DIFF_TYPE}" == "staged" ]]; then
 		git diff --staged --full-index --binary
-		return 0
+		return $TS_OK
 	elif [[ "${TS_DIFF_TYPE}" == "full" ]]; then
 		git diff --staged --full-index --binary "$(git hash-object -t tree /dev/null)"
-		return 0
+		return $TS_OK
 	else
-		return 3
+		return $TS_ERROR
 	fi
 }
 
@@ -555,6 +582,7 @@ function comprehend_change() {
 	local CERT1
 	local URL0
 	local URL1
+
 	CERT0=$(git rev-parse @~0:"${SERVER_DIRECTORY}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT0=""
 	CERT1=$(git rev-parse @~1:"${SERVER_DIRECTORY}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT1=""
 	URL0=$(git rev-parse @~0:"${SERVER_DIRECTORY}${TS_SERVER_URL}" 2>/dev/null) || URL0=""
@@ -573,8 +601,8 @@ function comprehend_change() {
 			hook_echo "Updating TSA ${SERVER_DIR} to branch ${b}"
 		fi
 
-		if [[ -f "${TS_DIFF_FILE}" ]] && create_timestamp  "${BRANCH}" "${TS_DIFF_FILE}" "${SERVER_DIRECTORY}"; then
-			return 0
+		if [[ -f "${TS_DIFF_FILE}" ]] && create_timestamp "${BRANCH}" "${TS_DIFF_FILE}" "${SERVER_DIRECTORY}"; then
+			return $TS_OK
 		fi
 	fi
 
@@ -584,9 +612,11 @@ function comprehend_change() {
 		hook_echo "Removing TSA ${SERVER_DIR} from branch ${b}"
 		git rm "${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
 			".${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}"
+
+		return $TS_OK
 	fi
 
-	return 1
+	return $TS_ERROR
 }
 
 # Creates a timestamp for a single TSA configuration
@@ -630,10 +660,10 @@ function create_timestamp() {
 	fi
 
 	# Create timestamp request
-	create_timestamp_request "${DATA_FILE}" "${SERVER_DIRECTORY}" || return 3
+	create_timestamp_request "${DATA_FILE}" "${SERVER_DIRECTORY}" || return $TS_ERROR_REQUEST
 
 	# Get timestamp response
-	get_timestamp_response "${SERVER_DIRECTORY}" || return 2
+	get_timestamp_response "${SERVER_DIRECTORY}" || return $TS_ERROR_RESPONSE
 
 	# Run verifications if set
 	if [[ "${TS_RESPONSE_VERIFY}" == "true" ]]; then
@@ -643,15 +673,15 @@ function create_timestamp() {
 			"${SERVER_DIRECTORY}"
 		RESULT=$?
 		case ${RESULT} in
-		2) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against request!" ;;
-		1) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against diff!" ;;
+		$TS_ERROR_VERIFY_REQUEST) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against request!" ;;
+		$TS_ERROR_VERIFY_DATA) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against diff!" ;;
 		0) ;;
 		esac
 
 		return "${RESULT}"
 	fi
 
-	return 0
+	return $TS_OK
 }
 
 function commit_timestamps() {
@@ -685,9 +715,9 @@ function create_timestamps() {
 
 	# Check if any signature was generated
 	if [[ ${SIG_COUNT} -gt 0 ]] && [[ ${RETURN} -eq 0 ]]; then
-		return 0
+		return $TS_OK
 	else
-		return 1
+		return $TS_ERROR
 	fi
 }
 
