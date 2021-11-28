@@ -314,11 +314,11 @@ git config <option> "<value>"
 * [x] Automatically redoing timestamps upon configuration changes
 * [x] Withholding timestamping commits from remotes
 * [x] Prevent merging timestamping commits into actual branches
-* [ ] Custom diff and timestamp generation per TSA
+* [x] Custom diff and timestamp generation per TSA
   * [x] Custom diffs
-  * [ ] Custom certificates
-  * [ ] Custom requests
-  * [ ] Custom responses
+  * [x] Custom certificates
+  * [x] Custom requests
+  * [x] Custom responses
 * [ ] Trusted timestamps after commits
 * [ ] Reducing checkouts in hooks
 

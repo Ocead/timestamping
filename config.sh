@@ -64,7 +64,7 @@ function set_options() {
 	git config ts.respone.options "${TS_RESPONSE_OPTIONS:-""}"
 	git config ts.respone.verify "${TS_RESPONSE_VERIFY:-"true"}"
 
-	git config ts.push.withhold "${TS_PUSH_WITHHOLD:-"true"}"
+	git config ts.push.withhold "${TS_PUSH_WITHHOLD:-"false"}"
 }
 
 # Copy the hooks into the repository
@@ -110,6 +110,7 @@ function configure_repo() {
 	mkdir -p "./${TS_SERVER_DIRECTORY}"
 	echo "Place your TSA configuration in this directory." >"./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE"
 	add_to_gitattributes "*.diff binary"
+	add_to_gitattributes "*.pem binary"
 	add_to_gitattributes "*.tsq binary"
 	add_to_gitattributes "*.tsr binary"
 	add_to_gitattributes "*.sh text eol=lf"

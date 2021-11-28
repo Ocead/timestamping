@@ -27,6 +27,8 @@
 # Error codes
 TS_ERROR_CALL=128
 
+TS_ERROR_NO_CONFIG_DIR=10
+
 TS_ERROR_WITHHOLD=9
 
 TS_ERROR_REQUEST=8
@@ -246,7 +248,7 @@ function get_timestamp_response() {
 
 	local SERVER_URL
 	if [[ -f "${SERVER_DIRECTORY}/${TS_SERVER_URL}" ]]; then
-		SERVER_URL=$(< "${SERVER_DIRECTORY}/${TS_SERVER_URL}" tr -d '[:cntrl:]')
+		SERVER_URL=$(tr <"${SERVER_DIRECTORY}/${TS_SERVER_URL}" -d '[:cntrl:]')
 	else
 		SERVER_URL="http://${SERVER_DIR}"
 	fi
@@ -320,11 +322,11 @@ function create_timestamp() {
 	SIGNING_BRANCH=$(get_signing_branch "${BRANCH}")
 
 	if [[ "${SERVER_DIR}" == "*" ]]; then
-		return 5
+		return $TS_ERROR_NO_CONFIG_DIR
 	fi
 
-	if [[ ! -f "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" ]]; then
-		return 5
+	if [[ ! -f "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" && ! -f "${SERVER_DIRECTORY}/cacert.sh" ]]; then
+		return $TS_ERROR_NO_CONFIG_DIR
 	fi
 
 	if [[ -f "${SERVER_DIRECTORY}/${TS_DIFF_FILE}" ]]; then
@@ -333,11 +335,30 @@ function create_timestamp() {
 		DATA_FILE="${SERVER_DIRECTORY}/${TS_DIFF_FILE}"
 	fi
 
+	if [[ -f "${SERVER_DIRECTORY}/cacert.sh" ]]; then
+		hook_echo "Downloading certificate for ${SERVER_DIR}"
+		"${SERVER_DIRECTORY}/cacert.sh" >"${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}"
+	fi
+
 	# Create timestamp request
-	create_timestamp_request "${DATA_FILE}" "${SERVER_DIRECTORY}" || return $TS_ERROR_REQUEST
+	if [[ ! -f "${SERVER_DIRECTORY}/request.sh" ]]; then
+		create_timestamp_request "${DATA_FILE}" "${SERVER_DIRECTORY}" || return $TS_ERROR_REQUEST
+	else
+		hook_echo "Custom creating timestamp request for ${SERVER_DIR}"
+		"${SERVER_DIRECTORY}/request.sh" \
+			<"${DATA_FILE}" \
+			>"${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" || return $TS_ERROR_REQUEST
+	fi
 
 	# Get timestamp response
-	get_timestamp_response "${SERVER_DIRECTORY}" || return $TS_ERROR_RESPONSE
+	if [[ ! -f "${SERVER_DIRECTORY}/response.sh" ]]; then
+		get_timestamp_response "${SERVER_DIRECTORY}" || return $TS_ERROR_RESPONSE
+	else
+		hook_echo "Custom getting timestamp response for ${SERVER_DIR}"
+		"${SERVER_DIRECTORY}/response.sh" \
+			<"${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
+			>"${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}" || return $TS_ERROR_RESPONSE
+	fi
 
 	# Run verifications if set
 	if [[ "${TS_RESPONSE_VERIFY}" == "true" ]]; then
@@ -374,7 +395,10 @@ function create_timestamps() {
 		RETURN=$?
 		case ${RETURN} in
 		0) SIG_COUNT=$((SIG_COUNT + 1)) ;;
-		*) ERR_COUNT=$((ERR_COUNT + 1)) ;;
+		"$TS_ERROR_NO_CONFIG_DIR") ;;
+		*)
+			ERR_COUNT=$((ERR_COUNT + 1))
+			;;
 		esac
 	done
 
