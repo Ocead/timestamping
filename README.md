@@ -4,8 +4,8 @@ Automatically create trusted timestamps for your commits
 
 This software allows you to add timestamps to your contributions to a Git repository via trusted third-party
 timestamping services. As specified in [RFC 3161](https://www.rfc-editor.org/rfc/rfc3161.html), these timestamps may be
-used to prove the existence of data at the time the timestamp was issued. This timestamp data may serve to derive proofs
-of:
+used to prove the existence of data at the time the timestamp was issued and that the data wasn't changed since then.
+This timestamp data may serve to derive proofs of:
 
 * Integrity of the data to be committed
 * Ownership immediately *before* the commit
@@ -23,6 +23,9 @@ timestamps or keep them private as needed. This software runs entirely client-si
 * [OpenSSL](https://github.com/openssl/openssl)
 
 ## Installation
+
+This software can be installed to any local Git repository. Clone this repository or download its source from
+the [Releases](https://github.com/Ocead/timestamping/releases) page. Then choose one of the following ways to install:
 
 ### Automatic
 
@@ -47,6 +50,19 @@ to:
 > ⚠ Warning: If the repository you wish to install to already uses the `commit-msg` and `post-commit` hooks,
 > make sure the scripts of this software are run **not** parallel to other hooked scripts that read or modify the
 > repository.
+
+### Deinstallation
+
+To remove automated timestamping from a repository (provided automatic installation preceded):
+
+1. Delete the `commit-msg`, `post-commit`, `pre-push` and `timestamping.sh` files from the `.git/hooks` directory in the
+   repository.
+2. Unset the `ts.*` [git-config](https://git-scm.com/docs/git-config) options.
+
+If you also want to delete any generated timestamps:
+
+3. Force-delete the `${ts.branch.prefix}-` and `${ts.branch.prefix}/*` (`sig-` and `sig/*` by default) branches from the
+   repository.
 
 ## Functionality
 
@@ -139,7 +155,7 @@ To verify the files against each other you may use these commands (provided defa
   openssl ts -verify -in response.tsr -data ../../.diff -CAfile cacert.pem
   ```
 
-## Configuring time stamp authorities (TSAs)
+## Configuring Time Stamp Authorities (TSAs)
 
 A time stamp authority is a trusted third party that signs data provided to it using asymmetric keys together with the
 timestamp of receiving the data. With this, the TSA confirms that it was sent the signed data at the signed timestamp.
@@ -148,7 +164,7 @@ in [RFC 3161 Section 3.4](https://www.rfc-editor.org/rfc/rfc3161.html#section-3.
 
 ### Configuring a new TSA
 
-You can configure an arbitrary number of individual TSA for each repository. To configure a new timestamping server for
+You can configure an arbitrary number of individual TSAs for each repository. To configure a new timestamping server for
 a repository where this software is installed to, do the following steps:
 
 1. Check out the branch specified through `ts.branch.prefix` (`sig-` by default).<br/>
@@ -157,8 +173,8 @@ a repository where this software is installed to, do the following steps:
    git checkout sig-
    ```
 
-2. In there, navigate to the server specified in `ts.server.directory` (`rfc3161` by default) and create a new
-   directory. The name of the directory specifies the domain of the timestamp server.<br/>
+2. In there, navigate to the directory specified in `ts.server.directory` (`rfc3161` by default) and create a new
+   directory. The name of this directory specifies the domain of the timestamp server.<br/>
    ```shell
    cd rfc3161
    mkdir zeitstempel.dfn.de
@@ -166,22 +182,22 @@ a repository where this software is installed to, do the following steps:
    If the URL of the timestamp server is a resource on a domain, you may name this directory anything and place a file
    named `url` (can be changed via `ts.server.url`) containing the URL inside it instead.
 
-3. Place the public keychain of the timestamp server inside the directory as `cacert.pem` (can be changed
-   via `ts.server.certificate`)
 
-The repository should look like this afterwards (provided default options):
+3. Place the public certificate bundle of the timestamp server inside the directory as `cacert.pem` (can be changed
+   via `ts.server.certificate`).<br/><br/>
+   The repository should look like this afterwards (provided default options):
+   ```
+   ./
+   └ rfc3161/
+     └ zeitstempel.dfn.de/
+       ├ cacert.pem
+      (└ url)
+   ...
+   ```
 
-```
-./
-└ rfc3161/
-  └ zeitstempel.dfn.de/
-    ├ cacert.pem
-    └ url
-...
-```
+4. Commit this addition to `sig-`.
 
-> ℹ Note: You can find a list of free-to-use timestamping servers
-> [here](https://gist.github.com/Manouchehri/fd754e402d98430243455713efada710).
+> ℹ Note: For a ready-to-use list of timestamping servers, see [docs/servers.md](docs/servers.md).
 
 ### Customising a TSA configuration
 
@@ -189,48 +205,54 @@ By placing additional files inside a TSA configuration's directory, you can furt
 TSA are generated:
 
 #### Timestamp server URL
+
 **File:** `url`
 
 **Description:**
-If existent,
-defines the URL the timestamping request is sent to.<br/>
+If existent, defines the URL the timestamping request is sent to.<br/>
 Use this to specify a protocol and resource on the server domain.
 
 **Example:**
 `./rfc3161/freetsa/url`
+
 ```
 https://freetsa.org/tsr
 ```
 
 #### TSA certificate chains
+
 **File:** <code>cacert</code><code>.sh</code>
 
 **Description:**
-If existent, is called when before verifying the timestamp before the actual commit,
-and it's output is piped into the certificate file of the TSA.<br/>
+If existent, is called when before verifying the timestamp before the actual commit, and it's output is piped into the
+certificate file of the TSA.<br/>
 Use this to ensure the timestamps are verified against the current certificate.
 
 **Example:**
 `./rfc3161/freetsa/cacert.sh`
+
 ```shell
 curl --silent https://freetsa.org/files/cacert.pem
 ```
 
 #### Diffs
+
 **File:** <code>diff</code><code>.sh</code>
 
 **Description:**
-If existent, is called when creating the diff before the actual commit, and it's output is used as a diff to timestamp from that TSA only.
-The so generated diff file will not be modified further.<br/>
+If existent, is called when creating the diff before the actual commit, and it's output is used as a diff to timestamp
+from that TSA only. The so generated diff file will not be modified further.<br/>
 Working directory is the repositories root directory.
 
 **Example:**
 `./rfc3161/freetsa/diff.sh`
+
 ```shell
 git diff --staged --full-index --binary
 ```
 
 #### Timestamp requests
+
 **File:** <code>request</code><code>.sh</code>
 
 **Description:**
@@ -239,11 +261,13 @@ The diff file will be supplied via <i>stdin</i> and the contents of the request 
 
 **Example:**
 `./rfc3161/freetsa/request.sh`
+
 ```shell
 openssl ts -query -cert -sha512 <&0
 ```
 
 #### Timestamp responses
+
 **File:** <code>response</code><code>.sh</code>
 
 **Description:**
@@ -252,14 +276,15 @@ The request will be supplied via <i>stdin</i> and the contents of the response f
 
 **Example:**
 `./rfc3161/freetsa/request.sh`
+
 ```shell
 curl --silent --header 'Content-Type: application/timestamp-query' --data-binary @- https://freetsa.org/tsr <&0
 ```
 
 ### Updating a TSA configuration
 
-You may want to change the configuration of a TSA if the URL to the server or the keychain of the server change. To do
-so (provided default options):
+You may want to change the configuration of a TSA if the URL to the server or the certificate bundle of the server
+change. To do so (provided default options):
 
 1. Change the associated files/directory on branch `sig-`.
 2. Commit the changes to `sig-`.
@@ -293,13 +318,13 @@ git config <option> "<value>"
 |`ts.diff.type`|Type of diff to be created.<br/>May either be:<br/>`"staged"` for diffs to HEAD, or <br/>`"full"` for diffs to the empty tree object.|`"staged"`|
 |`ts.server.directory`|The directory containing the timestamp server configurations relative to the repositories root directory.|`"rfc3161"`|
 |`ts.server.url`|Name of the file containing the url of the timestamp server.|`"url"`|
-|`ts.server.certificate`|Name of the key chain file for a single timestamp server.|`"cacert.pem"`|
+|`ts.server.certificate`|Name of the certificate bundle file for a single timestamp server.|`"cacert.pem"`|
 |`ts.request.file`|Name of the generated timestamp request file.|`"request.tsq"`|
 |`ts.request.options`|Options for creating the timestamp request file through `openssl ts -query`.|`"-cert -sha256 -no_nonce"`|
 |`ts.response.file`|Name of the received timestamp response file.|`"response.tsr"`|
 |`ts.response.options`|Options for requesting the timestamp from the server through `curl`.|`""`|
 |`ts.response.verify`|Whether the received timestamp should be verified against the diff and request file.<br/>May be `true` or `false`.|`"true"`|
-|`ts.push.withhold`|Whether timestamping commits should be withheld from remotes.<br/>If `true`, [git-push](https://git-scm.com/docs/git-push) will fail for timestamping branches.|`"true"`|
+|`ts.push.withhold`|Whether timestamping commits should be withheld from remotes.<br/>If `true`, [git-push](https://git-scm.com/docs/git-push) will fail for timestamping branches.|`"false"`|
 |`ts.enabled`|Whether automated timestamping should be triggered on commits.<br/>May be `true` or `false`.|`"true"`|
 
 > ⚠ Warning: Set the paths and filenames so that they don't interfere with what you plan to commit.
@@ -315,12 +340,7 @@ git config <option> "<value>"
 * [x] Withholding timestamping commits from remotes
 * [x] Prevent merging timestamping commits into actual branches
 * [x] Custom diff and timestamp generation per TSA
-  * [x] Custom diffs
-  * [x] Custom certificates
-  * [x] Custom requests
-  * [x] Custom responses
 * [ ] Trusted timestamps after commits
-* [ ] Reducing checkouts in hooks
 
 ## License
 

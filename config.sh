@@ -28,7 +28,7 @@ function prompt_options() {
 	read -r -p "Enter the diff type [staged]: " TS_DIFF_TYPE
 
 	read -r -p "Enter the TSA configuration directory name [rfc3161]: " TS_SERVER_DIRECTORY
-	read -r -p "Enter the TSA keychain file name [cacert.pem]: " TS_SERVER_CERTIFICATE
+	read -r -p "Enter the TSA certificate bunde file name [cacert.pem]: " TS_SERVER_CERTIFICATE
 	read -r -p "Enter the TSA url file name [url]: " TS_SERVER_URL
 
 	read -r -p "Enter the timestamp request file name [request.tsq]: " TS_REQUEST_FILE
@@ -70,7 +70,7 @@ function set_options() {
 # Copy the hooks into the repository
 function copy_hooks() {
 	local REPO_PATH=$1
-	local FILES=("commit-msg" "post-commit" "timestamping.sh")
+	local FILES=("commit-msg" "post-commit" "pre-push" "timestamping.sh")
 	for f in "${FILES[@]}"; do
 		[[ ! -f "${REPO_PATH}/${f}" ]] || {
 			script_echo "ERROR: Could not copy the required files"
