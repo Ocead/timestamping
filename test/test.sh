@@ -41,6 +41,24 @@ function add_custom_url_tsa() {
 	fi
 }
 
+# Adds a TSA configuration with custom diff to the repository
+function add_custom_diff_tsa() {
+	git checkout "sig-"
+	mkdir "./rfc3161/timestamp.digicert.com"
+	curl "https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem" >"./rfc3161/timestamp.digicert.com/cacert.pem"
+	echo "echo 'Gnampf'" >"./rfc3161/timestamp.digicert.com/diff.sh"
+	git add "./rfc3161/timestamp.digicert.com/cacert.pem" "./rfc3161/timestamp.digicert.com/diff.sh"
+	git commit -m "Added custom diff TSA" ./rfc3161/timestamp.digicert.com/*
+
+	# Checkout original branch
+	if git rev-parse --verify "master" >/dev/null 2>/dev/null; then
+		git checkout "master" >/dev/null 2>/dev/null
+	else
+		git checkout --orphan "master" >/dev/null 2>/dev/null
+		git rm -rf ./rfc3161/* ".gitattributes" >/dev/null 2>/dev/null
+	fi
+}
+
 # Verifies the repository before first actual commit
 function verify_zeroth() {
 	! test -f .gitattributes || echo_error "0: .gitattributes should not exist."
@@ -256,6 +274,35 @@ git --git-dir="${REPO_PATH}/.git" init
 	verify_first
 
 	add_custom_url_tsa
+	echo "Schnampf" >"./b.txt"
+	git add "./b.txt" >/dev/null 2>/dev/null
+	git commit -m "Second commit"
+
+	verify_second
+)
+echo ""
+
+# TSA with custom diff
+echo -e "[\e[0;32mTEST\e[0m]: Test with custom diff"
+REPO_PATH="./test/target/custom-diff"
+mkdir -p "${REPO_PATH}"
+git --git-dir="${REPO_PATH}/.git" init
+(
+	echo ""
+)
+./config.sh -d "${REPO_PATH}"
+(
+	cd "${REPO_PATH}" || exit 255
+	verify_zeroth
+
+	add_tsa
+	echo "Gnampf" >"./a.txt"
+	git add "./a.txt" >/dev/null 2>/dev/null
+	git commit -m "Initial commit"
+
+	verify_first
+
+	add_custom_diff_tsa
 	echo "Schnampf" >"./b.txt"
 	git add "./b.txt" >/dev/null 2>/dev/null
 	git commit -m "Second commit"

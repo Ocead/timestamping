@@ -327,14 +327,10 @@ function create_timestamp() {
 		return 5
 	fi
 
-	if [[ -f "${SERVER_DIRECTORY}/${TS_DIFF_FILE}.sh" ]]; then
+	if [[ -f "${SERVER_DIRECTORY}/${TS_DIFF_FILE}" ]]; then
 		local DIFF
 
 		DATA_FILE="${SERVER_DIRECTORY}/${TS_DIFF_FILE}"
-		DIFF=$(get_tsa_diff "${SIGNING_BRANCH}" "${SERVER_DIRECTORY}")
-		if ! write_tsa_diff "${DIFF}" "${SERVER_DIRECTORY}"; then
-			return 4
-		fi
 	fi
 
 	# Create timestamp request
@@ -350,9 +346,13 @@ function create_timestamp() {
 			"${DATA_FILE}" \
 			"${SERVER_DIRECTORY}"
 		RESULT=$?
-		case ${RESULT} in
-		$TS_ERROR_VERIFY_REQUEST) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against request!" ;;
-		$TS_ERROR_VERIFY_DATA) hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against diff!" ;;
+		case "${RESULT}" in
+		"${TS_ERROR_VERIFY_REQUEST}")
+			hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against request!"
+			;;
+		"${TS_ERROR_VERIFY_DATA}")
+			hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against diff!"
+			;;
 		0) ;;
 		esac
 
@@ -366,20 +366,20 @@ function create_timestamps() {
 	local BRANCH=$1
 	local RETURN=0
 	local SIG_COUNT=0
+	local ERR_COUNT=0
 
 	# Loop for each timestamping server
 	for d in "${TS_SERVER_DIRECTORY}/"*/; do
 		create_timestamp "${BRANCH}" "${TS_DIFF_FILE}" "${d}"
-		case $? in
+		RETURN=$?
+		case ${RETURN} in
 		0) SIG_COUNT=$((SIG_COUNT + 1)) ;;
-		1) RETURN=1 ;;
-		2) RETURN=1 ;;
-		*) ;;
+		*) ERR_COUNT=$((ERR_COUNT + 1)) ;;
 		esac
 	done
 
 	# Check if any signature was generated
-	if [[ ${SIG_COUNT} -gt 0 ]] && [[ ${RETURN} -eq 0 ]]; then
+	if [[ ${SIG_COUNT} -gt 0 ]] && [[ ${ERR_COUNT} -eq 0 ]]; then
 		return $TS_OK
 	else
 		return $TS_ERROR
@@ -448,7 +448,7 @@ function maybe_stash() {
 		git stash push >/dev/null 2>/dev/null
 		return 0
 	else
-		return 1
+		return "${RETURN}"
 	fi
 }
 
@@ -500,8 +500,10 @@ function get_signing_branch() {
 # Returns:
 # 	&1: The name of the signing branch
 function get_actual_signing_branch() {
-	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
-		echo "${TS_BRANCH_PREFIX}/$1"
+	local BRANCH=$1
+	local SIGNING_BRANCH="${TS_BRANCH_PREFIX}/$1"
+	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
+		echo "${SIGNING_BRANCH}"
 	else
 		echo "${TS_BRANCH_PREFIX}-"
 	fi
@@ -527,6 +529,10 @@ function checkout_actual() {
 	else
 		hook_echo "Checking out orphaned ${BRANCH}"
 		git checkout --orphan "${BRANCH}" >/dev/null 2>/dev/null
+
+		# Remove timestamping files
+		rm -rf "${TS_SERVER_DIRECTORY:?}/" "${TS_DIFF_FILE}" ".gitattributes"
+		git reset -- "${TS_SERVER_DIRECTORY:?}/"* "${TS_DIFF_FILE}" ".gitattributes" >/dev/null 2>/dev/null
 	fi
 }
 
@@ -581,7 +587,7 @@ function is_signing_only_object() {
 #
 # Returns:
 # 	&1: All active TSA configuration directory names
-function echo_tsa_list() {
+function get_tsa_list() {
 	local BRANCH=$1
 	local TSA_LIST=()
 	local SIGNING_BRANCH
@@ -592,7 +598,37 @@ function echo_tsa_list() {
 		TSA_LIST[${i}]="${TSA_LIST[${i}]%"/${TS_SERVER_CERTIFICATE}"}"
 	done
 
-	echo "${TSA_LIST[@]}"
+	for t in "${TSA_LIST[@]}"; do
+		echo "${t}"
+	done
+}
+
+function get_cacert_provider() {
+	local BRANCH=$1
+	local SERVER_DIRECTORY=$2
+	git show "$(canonize "${BRANCH}:${TS_SERVER_DIRECTORY}/${SERVER_DIRECTORY}/cacert.sh")" 2>/dev/null
+	return $?
+}
+
+function get_diff_provider() {
+	local BRANCH=$1
+	local SERVER_DIRECTORY=$2
+	git show "$(canonize "${BRANCH}:${TS_SERVER_DIRECTORY}/${SERVER_DIRECTORY}/diff.sh")" 2>/dev/null
+	return $?
+}
+
+function get_request_provider() {
+	local BRANCH=$1
+	local SERVER_DIRECTORY=$2
+	git show "$(canonize "${BRANCH}:${TS_SERVER_DIRECTORY}/${SERVER_DIRECTORY}/${TS_REQUEST_FILE%.*}.sh")" 2>/dev/null
+	return $?
+}
+
+function get_response_provider() {
+	local BRANCH=$1
+	local SERVER_DIRECTORY=$2
+	git show "$(canonize "${BRANCH}:${TS_SERVER_DIRECTORY}/${SERVER_DIRECTORY}/${TS_REQUEST_FILE%.*}.sh")" 2>/dev/null
+	return $?
 }
 # endregion
 
@@ -625,11 +661,17 @@ function get_tsa_diff() {
 	local BRANCH=$1
 	local SERVER_DIRECTORY=$2
 	local DIFF_PROVIDER
-	local PATH
-	PATH=$(canonize "${BRANCH}:${TS_SERVER_DIRECTORY}/${SERVER_DIRECTORY}/${TS_DIFF_FILE}.sh")
-	DIFF_PROVIDER=$(git show "${PATH}")
-	eval "$DIFF_PROVIDER"
-	return $?
+	local SIGNING_BRANCH
+	local RETURN
+	SIGNING_BRANCH=$(get_actual_signing_branch "${BRANCH}")
+	DIFF_PROVIDER=$(get_diff_provider "${SIGNING_BRANCH}" "${SERVER_DIRECTORY}")
+	RETURN=$?
+	if [[ -n "${DIFF_PROVIDER}" ]]; then
+		eval "${DIFF_PROVIDER}"
+		return $?
+	else
+		return 0
+	fi
 }
 
 # Checks if a diff file is well-formed
@@ -672,10 +714,8 @@ function write_diff() {
 function write_tsa_diff() {
 	local DIFF=$1
 	local SERVER_DIRECTORY=$2
-	local DIFF_FILE="${TS_SERVER_DIRECTORY}/${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}"
-	echo "${TS_DIFF_NOTICE}" >"${DIFF_FILE}"
-	echo "${DIFF}" >>"${DIFF_FILE}"
-	echo "" >>"${DIFF_FILE}"
+	local DIFF_FILE="${TS_SERVER_DIRECTORY}/${SERVER_DIRECTORY}/${TS_DIFF_FILE}"
+	echo "${DIFF}" >"${DIFF_FILE}"
 	check_diff "${DIFF_FILE}"
 	return $?
 }
@@ -691,26 +731,26 @@ function add_ts_files() {
 # Commits the timestamping files in the staging area
 function commit_ts_files() {
 	local COMMIT_MSG=$1
-	git commit --message "${COMMIT_MSG}" -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"*
+	git commit --message "${COMMIT_MSG}" -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
 }
 
 # Amends the timestamping files in the staging area to the last commit
 function amend_ts_files() {
 	local COMMIT_MSG=$1
-	git commit --amend --message "${COMMIT_MSG}" -- "${TS_SERVER_DIRECTORY}/"*
+	git commit --amend --message "${COMMIT_MSG}" -- "${TS_SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
 }
 
 # Merges changes from the root signing branch into the current signing branch
 function merge_branches() {
 	local COMMIT_ID=$1
-	git merge --strategy=recursive --strategy-option=theirs "${COMMIT_ID}"
+	git merge --strategy=recursive --strategy-option=theirs "${COMMIT_ID}" >/dev/null 2>/dev/null
 }
 
 # Relates a commit to the last timestamping commit
 function relate_branches() {
 	local COMMIT_MSG=$1
 	local COMMIT_ID=$2
-	git merge --allow-unrelated-histories --strategy ours --message "${COMMIT_MSG}" "${COMMIT_ID}"
+	git merge --allow-unrelated-histories --strategy ours --message "${COMMIT_MSG}" "${COMMIT_ID}" >/dev/null 2>/dev/null
 }
 # endregion
 
@@ -741,8 +781,14 @@ function comprehend_change() {
 			hook_echo "Updating TSA ${SERVER_DIR} to branch ${b}"
 		fi
 
-		if [[ -f "${TS_DIFF_FILE}" ]] && create_timestamp "${BRANCH}" "${TS_DIFF_FILE}" "${SERVER_DIRECTORY}"; then
-			return $TS_OK
+		if [[ -f "${SERVER_DIR}/${TS_DIFF_FILE}" ]]; then
+			local DIFF_FILE
+			DIFF_FILE=$(canonize "${SERVER_DIR}/${TS_DIFF_FILE}")
+			create_timestamp "${BRANCH}" "${DIFF_FILE}" "${SERVER_DIRECTORY}"
+			return $?
+		elif [[ -f "${TS_DIFF_FILE}" ]]; then
+			create_timestamp "${BRANCH}" "${TS_DIFF_FILE}" "${SERVER_DIRECTORY}"
+			return $?
 		fi
 	fi
 

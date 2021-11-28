@@ -112,6 +112,7 @@ function configure_repo() {
 	add_to_gitattributes "*.diff binary"
 	add_to_gitattributes "*.tsq binary"
 	add_to_gitattributes "*.tsr binary"
+	add_to_gitattributes "*.sh text eol=lf"
 	git add "./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE" >/dev/null 2>/dev/null
 	git add "./.gitattributes" >/dev/null 2>/dev/null
 	git commit -m "Initial timestamping commit" -- "./.gitattributes" "./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE" >/dev/null 2>/dev/null
