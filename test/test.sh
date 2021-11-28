@@ -10,9 +10,27 @@ function echo_error() {
 function add_tsa() {
 	git checkout "sig-"
 	mkdir "./rfc3161/zeitstempel.dfn.de"
-	curl "https://pki.pca.dfn.de/dfn-ca-global-g2/pub/cacert/chain.txt" -o "./rfc3161/zeitstempel.dfn.de/cacert.pem"
+	curl "https://pki.pca.dfn.de/dfn-ca-global-g2/pub/cacert/chain.txt" >"./rfc3161/zeitstempel.dfn.de/cacert.pem"
 	git add "./rfc3161/zeitstempel.dfn.de/cacert.pem"
 	git commit -m "Added simple TSA" "./rfc3161/zeitstempel.dfn.de/cacert.pem"
+
+	# Checkout original branch
+	if git rev-parse --verify "master" >/dev/null 2>/dev/null; then
+		git checkout "master" >/dev/null 2>/dev/null
+	else
+		git checkout --orphan "master" >/dev/null 2>/dev/null
+		git rm -rf ./rfc3161/* ".gitattributes" >/dev/null 2>/dev/null
+	fi
+}
+
+# Adds a TSA configuration with custom URL to the repository
+function add_custom_url_tsa() {
+	git checkout "sig-"
+	mkdir "./rfc3161/freetsa"
+	curl "https://freetsa.org/files/cacert.pem" >"./rfc3161/freetsa/cacert.pem"
+	echo "https://freetsa.org/tsr" >"./rfc3161/freetsa/url"
+	git add "./rfc3161/freetsa/cacert.pem" "./rfc3161/freetsa/url"
+	git commit -m "Added custom URL TSA" ./rfc3161/freetsa/*
 
 	# Checkout original branch
 	if git rev-parse --verify "master" >/dev/null 2>/dev/null; then
@@ -43,7 +61,11 @@ function verify_first() {
 		test -f .gitattributes || echo_error "1: .gitattributes should exist."
 	fi
 
-	git checkout "master" >/dev/null 2>/dev/null
+	if git rev-parse --verify master >/dev/null 2>/dev/null; then
+		git checkout master >/dev/null 2>/dev/null
+	else
+		git checkout --orphan master >/dev/null 2>/dev/null
+	fi
 }
 
 # Verifies the repository after second actual commit
@@ -63,12 +85,16 @@ function verify_second() {
 		test -f .gitattributes || echo_error "2: .gitattributes should exist."
 	fi
 
-	git checkout "master" >/dev/null 2>/dev/null
+	if git rev-parse --verify master >/dev/null 2>/dev/null; then
+		git checkout master >/dev/null 2>/dev/null
+	else
+		git checkout --orphan master >/dev/null 2>/dev/null
+	fi
 }
 
 # Install to empty repository
 echo -e "[\e[0;32mTEST\e[0m]: Install to empty repository"
-REPO_PATH="./test/target/empty"
+REPO_PATH="./test/target/repo-empty"
 mkdir -p "${REPO_PATH}"
 git --git-dir="${REPO_PATH}/.git" init
 (
@@ -96,7 +122,7 @@ echo ""
 
 # Install to filled unstaged repository
 echo -e "[\e[0;32mTEST\e[0m]: Install to filled unstaged repository"
-REPO_PATH="./test/target/unstaged"
+REPO_PATH="./test/target/repo-unstaged"
 mkdir -p "${REPO_PATH}"
 git --git-dir="${REPO_PATH}/.git" init
 (
@@ -124,7 +150,7 @@ echo ""
 
 # Install to filled uncommitted repository
 echo -e "[\e[0;32mTEST\e[0m]: Install to filled uncommitted repository"
-REPO_PATH="./test/target/uncommitted"
+REPO_PATH="./test/target/repo-uncommitted"
 mkdir -p "${REPO_PATH}"
 git --git-dir="${REPO_PATH}/.git" init
 (
@@ -152,7 +178,7 @@ echo ""
 
 # Install to filled committed repository
 echo -e "[\e[0;32mTEST\e[0m]: Install to filled committed repository"
-REPO_PATH="./test/target/committed"
+REPO_PATH="./test/target/repo-committed"
 mkdir -p "${REPO_PATH}"
 git --git-dir="${REPO_PATH}/.git" init
 (
@@ -180,7 +206,7 @@ echo ""
 
 # Install to filled staged repository
 echo -e "[\e[0;32mTEST\e[0m]: Install to filled staged repository"
-REPO_PATH="./test/target/staged"
+REPO_PATH="./test/target/repo-staged"
 mkdir -p "${REPO_PATH}"
 git --git-dir="${REPO_PATH}/.git" init
 (
@@ -203,6 +229,35 @@ git --git-dir="${REPO_PATH}/.git" init
 
 	echo "Schnampf" >"./b.txt"
 	git add "./b.txt"
+	git commit -m "Second commit"
+
+	verify_second
+)
+echo ""
+
+# TSA with custom URL
+echo -e "[\e[0;32mTEST\e[0m]: Test with custom URL"
+REPO_PATH="./test/target/custom-url"
+mkdir -p "${REPO_PATH}"
+git --git-dir="${REPO_PATH}/.git" init
+(
+	echo ""
+)
+./config.sh -d "${REPO_PATH}"
+(
+	cd "${REPO_PATH}" || exit 255
+	verify_zeroth
+
+	add_tsa
+	echo "Gnampf" >"./a.txt"
+	git add "./a.txt" >/dev/null 2>/dev/null
+	git commit -m "Initial commit"
+
+	verify_first
+
+	add_custom_url_tsa
+	echo "Schnampf" >"./b.txt"
+	git add "./b.txt" >/dev/null 2>/dev/null
 	git commit -m "Second commit"
 
 	verify_second
