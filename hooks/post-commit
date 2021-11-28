@@ -27,7 +27,40 @@ function hook_echo() {
 	echo -e "[\e[0;32m${TAG}\e[0m]: $1"
 }
 
-function relate_timestamps() {
+function relate_commits() {
+	local COMMIT_ID=$1
+	local BRANCH=$2
+	hook_echo "Commit ID is ${COMMIT_ID}"
+
+	local SIGNING_BRANCH
+	SIGNING_BRANCH=$(get_signing_branch "${BRANCH}")
+
+	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
+		hook_echo "Checking out signing branch"
+
+		local STASH
+		maybe_stash
+		STASH=$?
+		checkout_signing "${BRANCH}"
+
+		hook_echo "Merging ${BRANCH} into ${SIGNING_BRANCH}"
+		relate_branches "Relate commit '${COMMIT_ID}' to ${SIGNING_BRANCH}" "${COMMIT_ID}"
+		if [[ -n "${GIT_DIR}" ]]; then
+			rm "${GIT_DIR}/TIMESTAMP"
+		else
+			rm "${PWD}/.git/TIMESTAMP"
+		fi
+
+		checkout_actual "${BRANCH}"
+
+		maybe_unstash ${STASH}
+	else
+		hook_echo "Checking out new signing branch"
+		checkout_signing "${BRANCH}"
+	fi
+}
+
+function ts-post-commit_impl() {
 	local BRANCH
 	BRANCH=$(get_branch)
 
@@ -38,34 +71,7 @@ function relate_timestamps() {
 		update_timestamps "${COMMIT_ID}" "${BRANCH}"
 	elif [[ -f "${GIT_DIR}/TIMESTAMP" ]]; then
 		COMMIT_ID=$(git rev-parse HEAD)
-		hook_echo "Commit ID is ${COMMIT_ID}"
-
-		local SIGNING_BRANCH
-		SIGNING_BRANCH=$(get_signing_branch "${BRANCH}")
-
-		if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
-			hook_echo "Checking out signing branch"
-
-			local STASH
-			maybe_stash
-			STASH=$?
-			git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
-
-			hook_echo "Merging ${BRANCH} into ${SIGNING_BRANCH}"
-			relate_branches "Relate commit '${COMMIT_ID}' to ${SIGNING_BRANCH}" "${COMMIT_ID}"
-			if [[ -n "${GIT_DIR}" ]]; then
-				rm "${GIT_DIR}/TIMESTAMP"
-			else
-				rm "${PWD}/.git/TIMESTAMP"
-			fi
-
-			git checkout "${BRANCH}" >/dev/null 2>/dev/null
-
-			maybe_unstash ${STASH}
-		else
-			hook_echo "Checking out new signing branch"
-			git checkout --orphan "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
-		fi
+		relate_commits "${COMMIT_ID}" "${BRANCH}"
 	fi
 }
 
@@ -73,7 +79,7 @@ function ts-post-commit() {
 	# shellcheck source=timestamping.sh
 	source "$(dirname "$(realpath "$0")")/timestamping.sh"
 
-	if_enabled in_environment relate_timestamps
+	if_enabled in_environment ts-post-commit_impl
 	return $?
 }
 

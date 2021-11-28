@@ -64,7 +64,7 @@ function set_options() {
 	git config ts.respone.options "${TS_RESPONSE_OPTIONS:-""}"
 	git config ts.respone.verify "${TS_RESPONSE_VERIFY:-"true"}"
 
-	git config ts.push.withhold "${TS_PUSH_WITHHOLD:-"true"}"
+	git config ts.push.withhold "${TS_PUSH_WITHHOLD:-"false"}"
 }
 
 # Copy the hooks into the repository
@@ -73,13 +73,21 @@ function copy_hooks() {
 	local FILES=("commit-msg" "post-commit" "timestamping.sh")
 	for f in "${FILES[@]}"; do
 		[[ ! -f "${REPO_PATH}/${f}" ]] || {
-			script_echo "ERROR: Could not copy the required files"; exit 4
-			}
+			script_echo "ERROR: Could not copy the required files"
+			exit 4
+		}
 	done
 	cp ./hooks/* "${REPO_PATH}/.git/hooks/" >/dev/null || {
 		script_echo "ERROR: Could not copy the required files"
 		exit 3
 	}
+}
+
+function add_to_gitattributes() {
+	local LINE=$1
+	if ! grep -q -F -x "${LINE}" .gitattributes >/dev/null 2>/dev/null; then
+		echo "${LINE}" >>.gitattributes
+	fi
 }
 
 # Create initial timestamping objects
@@ -101,9 +109,11 @@ function configure_repo() {
 	TS_SERVER_DIRECTORY=$(git config --get ts.server.directory)
 	mkdir -p "./${TS_SERVER_DIRECTORY}"
 	echo "Place your TSA configuration in this directory." >"./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE"
-	if ! grep -q -F -x "*.diff binary" .gitattributes >/dev/null 2>/dev/null; then
-		echo "*.diff binary" >>.gitattributes
-	fi
+	add_to_gitattributes "*.diff binary"
+	add_to_gitattributes "*.pem binary"
+	add_to_gitattributes "*.tsq binary"
+	add_to_gitattributes "*.tsr binary"
+	add_to_gitattributes "*.sh text eol=lf"
 	git add "./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE" >/dev/null 2>/dev/null
 	git add "./.gitattributes" >/dev/null 2>/dev/null
 	git commit -m "Initial timestamping commit" -- "./.gitattributes" "./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE" >/dev/null 2>/dev/null

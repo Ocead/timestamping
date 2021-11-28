@@ -39,8 +39,7 @@ to:
 2. Set the options described in the [options](#options) section for at least the target repository.
 3. If you already have the hooks `commit-msg`, `post-commit`, `pre-push` in place, in your hooks:
     1. `source` this software's renamed respective hook file
-    2. Call the `ts-commit-msg`/`ts-post-commit`/`ts-pre-push` function with the arguments the
-       respective hook expects.
+    2. Call the `ts-commit-msg`/`ts-post-commit`/`ts-pre-push` function with the arguments the respective hook expects.
 
 > ℹ Note: if the script was installed into `.git/hooks` it is technically not part of the repository
 > and will therefore **not** be versioned through commits **nor** sent to remotes through pushes.
@@ -184,6 +183,79 @@ The repository should look like this afterwards (provided default options):
 > ℹ Note: You can find a list of free-to-use timestamping servers
 > [here](https://gist.github.com/Manouchehri/fd754e402d98430243455713efada710).
 
+### Customising a TSA configuration
+
+By placing additional files inside a TSA configuration's directory, you can further customize how timestamps from that
+TSA are generated:
+
+#### Timestamp server URL
+**File:** `url`
+
+**Description:**
+If existent,
+defines the URL the timestamping request is sent to.<br/>
+Use this to specify a protocol and resource on the server domain.
+
+**Example:**
+`./rfc3161/freetsa/url`
+```
+https://freetsa.org/tsr
+```
+
+#### TSA certificate chains
+**File:** <code>cacert</code><code>.sh</code>
+
+**Description:**
+If existent, is called when before verifying the timestamp before the actual commit,
+and it's output is piped into the certificate file of the TSA.<br/>
+Use this to ensure the timestamps are verified against the current certificate.
+
+**Example:**
+`./rfc3161/freetsa/cacert.sh`
+```shell
+curl --silent https://freetsa.org/files/cacert.pem
+```
+
+#### Diffs
+**File:** <code>diff</code><code>.sh</code>
+
+**Description:**
+If existent, is called when creating the diff before the actual commit, and it's output is used as a diff to timestamp from that TSA only.
+The so generated diff file will not be modified further.<br/>
+Working directory is the repositories root directory.
+
+**Example:**
+`./rfc3161/freetsa/diff.sh`
+```shell
+git diff --staged --full-index --binary
+```
+
+#### Timestamp requests
+**File:** <code>request</code><code>.sh</code>
+
+**Description:**
+If existent, is called for creating the timestamping request.<br/>
+The diff file will be supplied via <i>stdin</i> and the contents of the request file are expected on <i>stdout</i>.
+
+**Example:**
+`./rfc3161/freetsa/request.sh`
+```shell
+openssl ts -query -cert -sha512 <&0
+```
+
+#### Timestamp responses
+**File:** <code>response</code><code>.sh</code>
+
+**Description:**
+If existent, is called for retrieving the timestamping response.<br/>
+The request will be supplied via <i>stdin</i> and the contents of the response file are expected on <i>stdout</i>.
+
+**Example:**
+`./rfc3161/freetsa/request.sh`
+```shell
+curl --silent --header 'Content-Type: application/timestamp-query' --data-binary @- https://freetsa.org/tsr <&0
+```
+
 ### Updating a TSA configuration
 
 You may want to change the configuration of a TSA if the URL to the server or the keychain of the server change. To do
@@ -241,8 +313,12 @@ git config <option> "<value>"
 * [x] Referencing actual commits in timestamping branches
 * [x] Automatically redoing timestamps upon configuration changes
 * [x] Withholding timestamping commits from remotes
-* [ ] Prevent merging timestamping commits into actual branches
-* [ ] Custom diff and timestamp generation per TSA
+* [x] Prevent merging timestamping commits into actual branches
+* [x] Custom diff and timestamp generation per TSA
+  * [x] Custom diffs
+  * [x] Custom certificates
+  * [x] Custom requests
+  * [x] Custom responses
 * [ ] Trusted timestamps after commits
 * [ ] Reducing checkouts in hooks
 

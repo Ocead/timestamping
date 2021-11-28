@@ -27,10 +27,10 @@ function hook_echo() {
 	echo -e "[\e[0;32m${TAG}\e[0m]: $1"
 }
 
-function generate_timestamps() {
-	if [ $# -lt 1 ]; then
-  	die 'Call this script only through "git commit".'
-  fi
+function ts-commit-msg_impl() {
+	if [[ -z ${GIT_DIR+x} || $# -lt 1 ]]; then
+		die 'Call this script only through "git commit".'
+	fi
 
 	# Get current branch
 	local BRANCH
@@ -43,6 +43,9 @@ function generate_timestamps() {
 
 	hook_echo "Branch is ${BRANCH}"
 
+	local TSA_LIST=()
+	mapfile -t TSA_LIST < <(get_tsa_list "${BRANCH}")
+
 	# Get applicable diff of staged files
 	hook_echo "Creating diff"
 	local DIFF
@@ -51,35 +54,52 @@ function generate_timestamps() {
 		hook_echo 'ERROR: ts.diff.type must be either "staged" or "full"'
 	fi
 
+	# Get TSA-specific diffs
+	local TSA_DIFF=()
+	for i in "${!TSA_LIST[@]}"; do
+		hook_echo "Getting diff for ${TSA_LIST[${i}]}"
+		TSA_DIFF[${i}]=$(get_tsa_diff "${BRANCH}" "${TSA_LIST[${i}]}")
+	done
+
 	# Get commit message
 	local COMMIT_MSG_FILE=$1
 	local COMMIT_MSG
 	COMMIT_MSG=$(cat "${COMMIT_MSG_FILE}")
 
 	# Stash changes to be committed
-	! git rev-parse HEAD >/dev/null 2>/dev/null || git stash >/dev/null 2>/dev/null
+	local STASH
+	STASH=$(maybe_stash)
 
 	# Create signing branch if non-existent
-	check_out_signing_or_root "${BRANCH}"
+	checkout_signing "${BRANCH}"
 
 	# Write diff file
 	write_diff "${DIFF}"
 
-	create_and_commit_timestamps
+	# Write TSA-specific diffs
+	for i in "${!TSA_LIST[@]}"; do
+		if [[ -n "${TSA_DIFF[${i}]}" ]]; then
+			write_tsa_diff "${TSA_DIFF[${i}]}" "${TSA_LIST[${i}]}"
+		fi
+	done
+
+	create_timestamps "${BRANCH}"
 	RETURN=$?
+	if [[ ${RETURN} -eq 0 ]]; then
+		commit_timestamps "${BRANCH}"
+	else
+		hook_echo "Cannot commit timestamps"
+		rm "${TS_DIFF_FILE}" >/dev/null
+	fi
 
 	# Checkout original branch
-	check_out_actual "${BRANCH}"
-
-	# Remove timestamping files
-	rm -rf "${TS_SERVER_DIRECTORY:?}/" "${TS_DIFF_FILE}" ".gitattributes"
-	git reset -- "${TS_SERVER_DIRECTORY:?}/"* "${TS_DIFF_FILE}" ".gitattributes" >/dev/null 2>/dev/null
+	checkout_actual "${BRANCH}"
 
 	# Restore original commit message
 	echo "${COMMIT_MSG}" >"${COMMIT_MSG_FILE}"
 
 	# Unstash changes to be committed
-	! git rev-parse HEAD >/dev/null 2>/dev/null || git stash pop >/dev/null 2>/dev/null
+	maybe_unstash "${STASH}"
 
 	# Wait one second for different commit timestamps
 	sleep 1s
@@ -91,7 +111,7 @@ function ts-commit-msg() {
 	# shellcheck source=timestamping.sh
 	source "$(dirname "$(realpath "$0")")/timestamping.sh"
 
-	if_enabled in_environment generate_timestamps "$1"
+	if_enabled in_environment ts-commit-msg_impl "$@"
 	return $?
 }
 
