@@ -246,7 +246,7 @@ function get_timestamp_response() {
 
 	local SERVER_URL
 	if [[ -f "${SERVER_DIRECTORY}/${TS_SERVER_URL}" ]]; then
-		SERVER_URL=$(cat "${SERVER_DIRECTORY}/${TS_SERVER_URL}")
+		SERVER_URL=$(< "${SERVER_DIRECTORY}/${TS_SERVER_URL}" tr -d '[:cntrl:]')
 	else
 		SERVER_URL="http://${SERVER_DIR}"
 	fi
