@@ -28,7 +28,7 @@ function prompt_options() {
 	read -r -p "Enter the diff type [staged]: " TS_DIFF_TYPE
 
 	read -r -p "Enter the TSA configuration directory name [rfc3161]: " TS_SERVER_DIRECTORY
-	read -r -p "Enter the TSA certificate bunde file name [cacert.pem]: " TS_SERVER_CERTIFICATE
+	read -r -p "Enter the TSA certificate bundle file name [cacert.pem]: " TS_SERVER_CERTIFICATE
 	read -r -p "Enter the TSA url file name [url]: " TS_SERVER_URL
 
 	read -r -p "Enter the timestamp request file name [request.tsq]: " TS_REQUEST_FILE
@@ -92,6 +92,7 @@ function add_to_gitattributes() {
 
 # Create initial timestamping objects
 function configure_repo() {
+	local STASHED=1
 	# Get currently checked out branch
 	if ! BRANCH=$(git symbolic-ref --short HEAD); then
 		if ! BRANCH=$(git config init.defaultBranch); then
@@ -100,12 +101,20 @@ function configure_repo() {
 	fi
 
 	# Stash staged changed
-	! git rev-parse HEAD >/dev/null 2>/dev/null || git stash >/dev/null 2>/dev/null
+	if git rev-parse HEAD >/dev/null 2>/dev/null; then
+		if ! git diff-index --quiet HEAD --; then
+			script_echo "Stashing changes"
+			git stash push >/dev/null 2>/dev/null
+			STASHED=$?
+		fi
+	fi
 
 	# Checkout root signing branch
+	script_echo "Checking out root signing branch"
 	git checkout --orphan "$(git config --get ts.branch.prefix)-" >/dev/null 2>/dev/null
 
 	# Create initial commit in root signing branch
+	script_echo "Creating TSA config directory"
 	TS_SERVER_DIRECTORY=$(git config --get ts.server.directory)
 	mkdir -p "./${TS_SERVER_DIRECTORY}"
 	echo "Place your TSA configuration in this directory." >"./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE"
@@ -119,6 +128,7 @@ function configure_repo() {
 	git commit -m "Initial timestamping commit" -- "./.gitattributes" "./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE" >/dev/null 2>/dev/null
 
 	# Return to previous branch
+	script_echo "Checking out actual branch"
 	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
 		git checkout "${BRANCH}" >/dev/null 2>/dev/null
 	else
@@ -128,10 +138,12 @@ function configure_repo() {
 	fi
 
 	# Pop stashed changes
-	if git rev-parse HEAD >/dev/null 2>/dev/null; then
+	if [[ ${STASHED} -eq 0 ]]; then
+		script_echo "Unstashing changes"
 		git stash pop >/dev/null 2>/dev/null
 	else
 		# Remove timestamping files
+		script_echo "Removing timestamping files"
 		rm -rf "./${TS_SERVER_DIRECTORY}/" "./.gitattributes" >/dev/null 2>/dev/null
 	fi
 }
@@ -178,11 +190,16 @@ function install_timestamping() {
 		fi
 
 		if [[ ${OPT_DEFAULT} == false ]]; then
+			script_echo "Specify options:"
 			prompt_options
+		else
+			script_echo "Assuming default options"
 		fi
 
+		script_echo "Setting options for repository"
 		set_options
 
+		script_echo "Configuring repository"
 		configure_repo
 	)
 }
