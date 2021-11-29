@@ -14,7 +14,9 @@ Installs automated timestamping into a git repository
 
 Options:
     -d, --default install with default options
-    -h, --help    show this help text"
+    -h, --help    show this help text
+    -r, --remove  removes automated timestamping, but keeps the generated timestamps
+    -p, --purge   removes automated timestamping and the generated timestamps"
 }
 
 # Prompts all git config options

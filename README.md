@@ -53,8 +53,26 @@ to:
 > make sure the scripts of this software are run **not** parallel to other hooked scripts that read or modify the
 > repository.
 
-### Deinstallation
+## Deinstallation
 
+### Automatic
+
+Run the [config.sh](config.sh) script with the path to the local repository you want to uninstall automated timestamping
+from:
+
+```shell
+./config.sh -r ~/path/to/repo
+```
+
+If you don't want to keep the generated timestamps, run
+
+```shell
+./config.sh -p ~/path/to/repo
+```
+
+instead.
+
+### Manual
 To remove automated timestamping from a repository (provided automatic installation preceded):
 
 1. Delete the `commit-msg`, `post-commit`, `pre-push` and `timestamping.sh` files from the `.git/hooks` directory in the
