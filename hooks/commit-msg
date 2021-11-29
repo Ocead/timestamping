@@ -57,8 +57,9 @@ function ts-commit-msg_impl() {
 	# Get TSA-specific diffs
 	local TSA_DIFF=()
 	for i in "${!TSA_LIST[@]}"; do
-		hook_echo "Getting diff for ${TSA_LIST[${i}]}"
-		TSA_DIFF[${i}]=$(get_tsa_diff "${BRANCH}" "${TSA_LIST[${i}]}")
+		if TSA_DIFF[${i}]=$(get_tsa_diff "${BRANCH}" "${TSA_LIST[${i}]}"); then
+			hook_echo "Getting diff for ${TSA_LIST[${i}]}"
+		fi
 	done
 
 	# Get commit message
@@ -68,7 +69,8 @@ function ts-commit-msg_impl() {
 
 	# Stash changes to be committed
 	local STASH
-	STASH=$(maybe_stash)
+	maybe_stash
+	STASH=$?
 
 	# Create signing branch if non-existent
 	checkout_signing "${BRANCH}"

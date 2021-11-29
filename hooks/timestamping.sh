@@ -352,6 +352,7 @@ function create_timestamp() {
 
 	# Get timestamp response
 	if [[ ! -f "${SERVER_DIRECTORY}/response.sh" ]]; then
+		hook_echo "Getting timestamp response for ${SERVER_DIR}"
 		get_timestamp_response "${SERVER_DIRECTORY}" || return $TS_ERROR_RESPONSE
 	else
 		hook_echo "Custom getting timestamp response for ${SERVER_DIR}"
@@ -478,11 +479,11 @@ function update_timestamps() {
 # 	0: No changes were stashed
 # 	1: Changes were stashed
 function maybe_stash() {
-	if git rev-parse HEAD >/dev/null 2>/dev/null && git diff --cached --quiet --exit-code HEAD; then
+	if git rev-parse HEAD >/dev/null 2>/dev/null; then
 		git stash push >/dev/null 2>/dev/null
-		return 0
+		return $?
 	else
-		return "${RETURN}"
+		return 1
 	fi
 }
 
@@ -577,10 +578,14 @@ function checkout_signing() {
 	local SIGNING_BRANCH
 	SIGNING_BRANCH=$(get_signing_branch "$1")
 	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
-		git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
+		git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null && hook_echo "Checking out ${SIGNING_BRANCH}"
+		return $?
 	else
-		git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null
-		git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null
+
+		if git checkout "${TS_BRANCH_PREFIX}-"; then
+			hook_echo "Checking out ${TS_BRANCH_PREFIX}-"
+			git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null && hook_echo "Checking out new ${SIGNING_BRANCH}"
+		fi
 	fi
 }
 
@@ -704,7 +709,7 @@ function get_tsa_diff() {
 		eval "${DIFF_PROVIDER}"
 		return $?
 	else
-		return 0
+		return 1
 	fi
 }
 
@@ -840,9 +845,6 @@ function comprehend_change() {
 }
 
 function commit_timestamps() {
-	# Checkout signing branch
-	checkout_signing "$1"
-
 	# Add timestamp files to stage
 	hook_echo "Committing timestamps"
 	add_ts_files
