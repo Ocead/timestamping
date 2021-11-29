@@ -1,0 +1,7 @@
+*.sh        text eol=lf
+hooks/**    text eol=lf
+*.diff binary
+*.pem binary
+*.tsq binary
+*.tsr binary
+*.sh text eol=lf
