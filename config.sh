@@ -45,26 +45,26 @@ function prompt_options() {
 function set_options() {
 	git config ts.enabled "true"
 
-	git config ts.branch.prefix "${TS_BRANCH_PREFIX:-"sig"}"
-	git config ts.commit.prefix "${TS_COMMIT_PREFIX:-"Timestamp for: "}"
-	git config ts.commit.options "${COMMIT_OPTIONS:-""}"
+	git config --local ts.branch.prefix "${TS_BRANCH_PREFIX:-"sig"}"
+	git config --local ts.commit.prefix "${TS_COMMIT_PREFIX:-"Timestamp for: "}"
+	git config --local ts.commit.options "${COMMIT_OPTIONS:-""}"
 
-	git config ts.diff.notice "${TS_DIFF_NOTICE:-"Written by $(git config --get user.name)"}"
-	git config ts.diff.file "${TS_DIFF_FILE:-".diff"}"
-	git config ts.diff.type "${TS_DIFF_TYPE:-"staged"}"
+	git config --local ts.diff.notice "${TS_DIFF_NOTICE:-"Written by $(git config --get user.name)"}"
+	git config --local ts.diff.file "${TS_DIFF_FILE:-".diff"}"
+	git config --local ts.diff.type "${TS_DIFF_TYPE:-"staged"}"
 
-	git config ts.server.directory "${TS_SERVER_DIRECTORY:-"rfc3161"}"
-	git config ts.server.certificate "${TS_SERVER_CERTIFICATE:-"cacert.pem"}"
-	git config ts.server.url "${TS_SERVER_URL:-"url"}"
+	git config --local ts.server.directory "${TS_SERVER_DIRECTORY:-"rfc3161"}"
+	git config --local ts.server.certificate "${TS_SERVER_CERTIFICATE:-"cacert.pem"}"
+	git config --local ts.server.url "${TS_SERVER_URL:-"url"}"
 
-	git config ts.request.file "${TS_REQUEST_FILE:-"request.tsq"}"
-	git config ts.request.options "${TS_REQUEST_OPTIONS:-"-cert -sha256 -no_nonce"}"
+	git config --local ts.request.file "${TS_REQUEST_FILE:-"request.tsq"}"
+	git config --local ts.request.options "${TS_REQUEST_OPTIONS:-"-cert -sha256 -no_nonce"}"
 
-	git config ts.respone.file "${TS_RESPONSE_FILE:-"response.tsr"}"
-	git config ts.respone.options "${TS_RESPONSE_OPTIONS:-""}"
-	git config ts.respone.verify "${TS_RESPONSE_VERIFY:-"true"}"
+	git config --local ts.respone.file "${TS_RESPONSE_FILE:-"response.tsr"}"
+	git config --local ts.respone.options "${TS_RESPONSE_OPTIONS:-""}"
+	git config --local ts.respone.verify "${TS_RESPONSE_VERIFY:-"true"}"
 
-	git config ts.push.withhold "${TS_PUSH_WITHHOLD:-"false"}"
+	git config --local ts.push.withhold "${TS_PUSH_WITHHOLD:-"false"}"
 }
 
 # Copy the hooks into the repository
@@ -90,9 +90,43 @@ function add_to_gitattributes() {
 	fi
 }
 
+function files_are_same() {
+	local LHP=$1
+	local RHP=$2
+
+	if [[ -f ${LHP} && -f ${RHP} ]]; then
+		local LHH
+		local RHH
+		LHH=$(git hash-object "${LHP}")
+		RHH=$(git hash-object "${RHP}")
+		test "${LHH}" == "${RHH}"
+		return $?
+	else
+		return 1
+	fi
+}
+
+function remove_if_same() {
+	local LOCAL_PATH=$1
+	local REPO_PATH=$2
+	local FILE=$3
+	local LHP="${LOCAL_PATH}/${FILE}"
+	local RHP="${REPO_PATH}/${FILE}"
+
+	if [[ -f "${RHP}" ]]; then
+		files_are_same "${LHP}" "${RHP}" && rm "${RHP}"
+	fi
+}
+
 # Create initial timestamping objects
 function configure_repo() {
-	local STASHED=1
+	local TS_BRANCH_PREFIX
+	TS_BRANCH_PREFIX=$(git config --get ts.branch.prefix)
+	if git rev-parse --verify "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null; then
+		script_echo "Root signing branch already present"
+		return 0
+	fi
+
 	# Get currently checked out branch
 	if ! BRANCH=$(git symbolic-ref --short HEAD); then
 		if ! BRANCH=$(git config init.defaultBranch); then
@@ -111,7 +145,7 @@ function configure_repo() {
 
 	# Checkout root signing branch
 	script_echo "Checking out root signing branch"
-	git checkout --orphan "$(git config --get ts.branch.prefix)-" >/dev/null 2>/dev/null
+	git checkout --orphan "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null
 
 	# Create initial commit in root signing branch
 	script_echo "Creating TSA config directory"
@@ -184,11 +218,6 @@ function install_timestamping() {
 			exit 1
 		fi
 
-		if ! git diff --exit-code >/dev/null 2>/dev/null; then
-			git status
-			script_echo "ERROR: You have local uncommitted changes. Please commit or reset them before installing."
-		fi
-
 		if [[ ${OPT_DEFAULT} == false ]]; then
 			script_echo "Specify options:"
 			prompt_options
@@ -201,7 +230,69 @@ function install_timestamping() {
 
 		script_echo "Configuring repository"
 		configure_repo
+
+		script_echo "Installation complete."
 	)
+}
+
+function uninstall_timestamping() {
+	local REPO_PATH=$1
+
+	script_echo "Removing hooks"
+	remove_if_same "./hooks" "${REPO_PATH}/.git/hooks" "commit-msg"
+	remove_if_same "./hooks" "${REPO_PATH}/.git/hooks" "post-commit"
+	remove_if_same "./hooks" "${REPO_PATH}/.git/hooks" "pre-push"
+	remove_if_same "./hooks" "${REPO_PATH}/.git/hooks" "timestamping.sh"
+
+	if [[ ${OPT_PURGE} == true ]]; then
+		(
+			cd "${REPO_PATH}" || {
+				script_echo "ERROR: Could not enter the specified directory"
+				exit 2
+			}
+
+			local TS_BRANCH_PREFIX
+			if ! TS_BRANCH_PREFIX=$(git config --get ts.branch.prefix); then
+				script_echo "ERROR: Could not get option 'ts.branch.prefix'"
+			fi
+			local BRANCHES=()
+			mapfile -t BRANCHES < <(git branch --list | tr -d ' *')
+
+			for b in "${BRANCHES[@]}"; do
+				if [[ ${b} == "${TS_BRANCH_PREFIX}-" || ${b} == "${TS_BRANCH_PREFIX}/"* ]]; then
+					script_echo "Removing branch ${b}"
+					git branch -D "${b}"
+				fi
+			done
+
+			git config --unset --local ts.branch.prefix
+		)
+	fi
+
+	script_echo "Unsetting options"
+	git config --unset --local ts.enabled
+
+	git config --unset --local ts.commit.prefix
+	git config --unset --local ts.commit.options
+
+	git config --unset --local ts.diff.notice
+	git config --unset --local ts.diff.file
+	git config --unset --local ts.diff.type
+
+	git config --unset --local ts.server.directory
+	git config --unset --local ts.server.certificate
+	git config --unset --local ts.server.url
+
+	git config --unset --local ts.request.file
+	git config --unset --local ts.request.options
+
+	git config --unset --local ts.respone.file
+	git config --unset --local ts.respone.options
+	git config --unset --local ts.respone.verify
+
+	git config --unset --local ts.push.withhold
+
+	script_echo "Uninstall complete."
 }
 
 # Short options
@@ -210,15 +301,19 @@ for arg in "$@"; do
 	case "${arg}" in
 	"--default") set -- "$@" "-d" ;;
 	"--help") set -- "$@" "-h" ;;
+	"--remove") set -- "$@" "-r" ;;
+	"--purge") set -- "$@" "-p" ;;
 	*) set -- "$@" "${arg}" ;;
 	esac
 done
 
 OPT_DEFAULT=false
+OPT_REMOVE=false
+OPT_PURGE=false
 
 # Parse options
 OPTIND=1
-while getopts "dh" opt; do
+while getopts "dhrp" opt; do
 	case "${opt}" in
 	"d")
 		OPT_DEFAULT=true
@@ -226,6 +321,12 @@ while getopts "dh" opt; do
 	"h")
 		print_help
 		exit 0
+		;;
+	"r")
+		OPT_REMOVE=true
+		;;
+	"p")
+		OPT_PURGE=true
 		;;
 	"?")
 		print_help
@@ -240,6 +341,10 @@ if [ $# -eq 0 ]; then
 	exit 4
 fi
 
-install_timestamping "$1"
+if [[ ${OPT_REMOVE} == false && ${OPT_PURGE} == false ]]; then
+	install_timestamping "$1"
+else
+	uninstall_timestamping "$1"
+fi
 
 exit 0

@@ -403,9 +403,19 @@ function create_timestamps() {
 	done
 
 	# Check if any signature was generated
-	if [[ ${SIG_COUNT} -gt 0 ]] && [[ ${ERR_COUNT} -eq 0 ]]; then
+	if [[ ${ERR_COUNT} -eq 0 ]]; then
+		if [[ ${SIG_COUNT} -gt 0 ]]; then
+			commit_timestamps "${BRANCH}"
+		else
+			hook_echo "No timestamps to commit"
+			rm "${TS_DIFF_FILE}" >/dev/null
+		fi
 		return $TS_OK
 	else
+		if [[ ${SIG_COUNT} -eq 0 ]]; then
+			hook_echo "Cannot commit timestamps"
+		fi
+		rm "${TS_DIFF_FILE}" >/dev/null
 		return $TS_ERROR
 	fi
 }

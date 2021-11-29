@@ -85,12 +85,6 @@ function ts-commit-msg_impl() {
 
 	create_timestamps "${BRANCH}"
 	RETURN=$?
-	if [[ ${RETURN} -eq 0 ]]; then
-		commit_timestamps "${BRANCH}"
-	else
-		hook_echo "Cannot commit timestamps"
-		rm "${TS_DIFF_FILE}" >/dev/null
-	fi
 
 	# Checkout original branch
 	checkout_actual "${BRANCH}"
