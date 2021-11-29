@@ -321,6 +321,34 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"repo-staged"* || ${TEST_NAME} == "r
 	echo ""
 fi
 
+# Install to filled staged repository
+if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"repo-no-tsa"* || ${TEST_NAME} == "repo" ]]; then
+	echo -e "[\e[0;32mTEST\e[0m]: Install to repository without TSA"
+	REPO_PATH="./test/target/repo-no-tsa"
+	mkdir -p "${REPO_PATH}"
+	git --git-dir="${REPO_PATH}/.git" init
+	(
+		cd "${REPO_PATH}" || exit 255
+		echo "Gnampf" >"./a.txt"
+		git add "./a.txt"
+		git commit -m "Initial commit"
+		echo "Schnampf" >"./b.txt"
+		git add "./b.txt"
+	)
+	./config.sh --default "${REPO_PATH}"
+	(
+		cd "${REPO_PATH}" || exit 255
+		verify_zeroth
+
+		test -f b.txt || echo_error "b.txt should exist."
+
+		echo "Schnampf" >"./b.txt"
+		git add "./b.txt"
+		git commit -m "Second commit"
+	)
+	echo ""
+fi
+
 # TSA with custom URL
 if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-url"* || ${TEST_NAME} == "custom" ]]; then
 	echo -e "[\e[0;32mTEST\e[0m]: Test with custom URL"
