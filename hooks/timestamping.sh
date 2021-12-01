@@ -445,6 +445,7 @@ function update_timestamps() {
 	STASH=$?
 
 	local SIG_COUNT=0
+	local ERR_COUNT=0
 
 	for b in "${BRANCHES[@]}"; do
 		hook_echo "Applying TSA changes to ${b}"
@@ -454,15 +455,23 @@ function update_timestamps() {
 		for d in "${TS_SERVER_DIRECTORY}/"*/; do
 			if comprehend_change "${b}" "${d}"; then
 				SIG_COUNT=$((SIG_COUNT + 1))
+			else
+				ERR_COUNT=$((ERR_COUNT + 1))
+				hook_echo "ERROR: Could not create timestamp for ${d}"
 			fi
 		done
 
-		if [[ ${SIG_COUNT} -gt 0 ]]; then
-			hook_echo "Committing timestamps"
-			add_ts_files
-			amend_ts_files "Applied updates from '${COMMIT_ID}' to ${b}"
+		if [[ ${ERR_COUNT} -eq 0 ]]; then
+			if [[ ${SIG_COUNT} -gt 0 ]]; then
+				hook_echo "Committing timestamps"
+				add_ts_files
+				amend_ts_files "Applied updates from '${COMMIT_ID}' to ${b}"
+			else
+				hook_echo "No timestamps to amend"
+				rm "${TS_DIFF_FILE}" >/dev/null
+			fi
 		else
-			hook_echo "No timestamps to amend"
+			git reset -- "./${SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
 			rm "${TS_DIFF_FILE}" >/dev/null
 		fi
 	done
@@ -480,7 +489,7 @@ function update_timestamps() {
 # 	1: Changes were stashed
 function maybe_stash() {
 	if git rev-parse HEAD >/dev/null 2>/dev/null; then
-		git stash push >/dev/null 2>/dev/null
+		git stash push >/dev/null 2>/dev/null && hook_echo "Stashing changes"
 		return $?
 	else
 		return 1
@@ -491,7 +500,8 @@ function maybe_stash() {
 # Arguments:
 # 	$1 1, if changes should be unstashed, 0 otherwise
 function maybe_unstash() {
-	if [[ $1 != 0 ]]; then
+	if [[ $1 == 0 ]]; then
+		hook_echo "Unstashing changes"
 		git stash pop >/dev/null 2>/dev/null
 	fi
 }
@@ -504,8 +514,8 @@ function maybe_unstash() {
 # 	&1: The name of the branch
 function get_branch() {
 	local BRANCH
-	if ! BRANCH=$(git symbolic-ref --short HEAD); then
-		if ! BRANCH=$(git config init.defaultBranch); then
+	if ! BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
+		if ! BRANCH=$(git config init.defaultBranch 2>/dev/null); then
 			BRANCH="master"
 		fi
 	fi
@@ -582,7 +592,7 @@ function checkout_signing() {
 		return $?
 	else
 
-		if git checkout "${TS_BRANCH_PREFIX}-"; then
+		if git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null; then
 			hook_echo "Checking out ${TS_BRANCH_PREFIX}-"
 			git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null && hook_echo "Checking out new ${SIGNING_BRANCH}"
 		fi
@@ -794,27 +804,109 @@ function relate_branches() {
 # endregion
 
 function comprehend_change() {
+	local TS_CHANGE_NON=0
+	local TS_CHANGE_NEW=1
+	local TS_CHANGE_MOD=2
+	local TS_CHANGE_DEL=3
+	local TS_CHANGE_NEX=4
+	local TS_CHANGE_ILL=5
+
+	function comprehend_file_change() {
+		local FILE_PATH=$1
+		local OLD_PATH
+		local REF_NOW
+		local REF_OLD
+
+		if [ $# == 2 ]; then
+			OLD_PATH=$2
+		else
+			OLD_PATH="${FILE_PATH}"
+		fi
+
+		REF_NOW=$(git rev-parse @~0:"${FILE_PATH}" 2>/dev/null) || REF_NOW=""
+		REF_OLD=$(git rev-parse @~1:"${OLD_PATH}" 2>/dev/null) || REF_OLD=""
+
+		if [[ ${REF_NOW} == "${REF_OLD}" ]]; then
+			if [[ -n ${REF_NOW} ]]; then
+				return $TS_CHANGE_NON
+			else
+				return $TS_CHANGE_NEX
+			fi
+		elif [[ -n ${REF_NOW} ]]; then
+			if [[ -z ${REF_OLD} ]]; then
+				return $TS_CHANGE_NEW
+			elif [[ -n ${REF_OLD} ]]; then
+				return $TS_CHANGE_MOD
+			fi
+		elif [[ -z ${REF_NOW} && -n ${REF_OLD} ]]; then
+			return $TS_CHANGE_DEL
+		else
+			return $TS_CHANGE_ILL
+		fi
+	}
+
+	function echo_file_change() {
+		local FILE_PATH=$1
+		local FILE_CHANGE=$2
+
+		case ${FILE_CHANGE} in
+		"$TS_CHANGE_NON") hook_echo "${FILE_PATH} wasn't changed" ;;
+		"$TS_CHANGE_NEW") hook_echo "${FILE_PATH} was added" ;;
+		"$TS_CHANGE_MOD") hook_echo "${FILE_PATH} was modified" ;;
+		"$TS_CHANGE_DEL") hook_echo "${FILE_PATH} was deleted" ;;
+		"$TS_CHANGE_NEX") hook_echo "${FILE_PATH} doesn't exist" ;;
+		"$TS_CHANGE_ILL") hook_echo "${FILE_PATH} is magical" ;;
+		esac
+	}
+
 	local BRANCH=$1
 	local SERVER_DIRECTORY=$2
 
-	local CERT0
-	local CERT1
-	local URL0
-	local URL1
+	local CERT_PATH
+	local OLD_CERT_PATH
+	local URL_PATH
+	local REQ_PATH
+	local RES_PATH
 
-	CERT0=$(git rev-parse @~0:"${SERVER_DIRECTORY}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT0=""
-	CERT1=$(git rev-parse @~1:"${SERVER_DIRECTORY}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT1=""
-	URL0=$(git rev-parse @~0:"${SERVER_DIRECTORY}${TS_SERVER_URL}" 2>/dev/null) || URL0=""
-	URL1=$(git rev-parse @~1:"${SERVER_DIRECTORY}${TS_SERVER_URL}" 2>/dev/null) || URL1=""
+	local CERT_CHANGE
+	local URL_CHANGE
+	local REQ_CHANGE
+	local RES_CHANGE
+
+	CERT_PATH=$(canonize "${SERVER_DIRECTORY}/cacert.sh")
+	OLD_CERT_PATH=$(canonize "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}")
+	URL_PATH=$(canonize "${SERVER_DIRECTORY}/${TS_SERVER_URL}")
+	REQ_PATH=$(canonize "${SERVER_DIRECTORY}/request.sh")
+	RES_PATH=$(canonize "${SERVER_DIRECTORY}/response.sh")
+
+	if ! git rev-parse @~0:"${CERT_PATH}" >/dev/null 2>/dev/null; then
+		CERT_PATH="${OLD_CERT_PATH}"
+	fi
+
+	comprehend_file_change "${CERT_PATH}" "${OLD_CERT_PATH}"
+	CERT_CHANGE=$?
+	comprehend_file_change "${URL_PATH}"
+	URL_CHANGE=$?
+	comprehend_file_change "${REQ_PATH}"
+	REQ_CHANGE=$?
+	comprehend_file_change "${RES_PATH}"
+	RES_CHANGE=$?
+
+	# echo_file_change "${CERT_PATH}" "${CERT_CHANGE}"
+	# echo_file_change "${URL_PATH}" "${URL_CHANGE}"
+	# echo_file_change "${REQ_PATH}" "${REQ_CHANGE}"
+	# echo_file_change "${RES_PATH}" "${RES_CHANGE}"
 
 	local SERVER_DIR
 	SERVER_DIR=${SERVER_DIRECTORY#*${TS_SERVER_DIRECTORY}/}
 	SERVER_DIR=${SERVER_DIR%/*}
 
 	# Added/Modified TSAs
-	if [[ -n ${CERT0} && ${CERT0} != "${CERT1}" ]] ||
-		[[ -n ${URL0} && ${URL0} != "${URL1}" ]]; then
-		if [[ -z ${CERT1} && -z ${URL1} ]]; then
+	if [[ ${CERT_CHANGE} == "${TS_CHANGE_NEW}" || ${CERT_CHANGE} == "${TS_CHANGE_MOD}" ]] ||
+		[[ ${URL_CHANGE} == "${TS_CHANGE_NEW}" || ${URL_CHANGE} == "${TS_CHANGE_MOD}" ]] ||
+		[[ ${REQ_CHANGE} != "${TS_CHANGE_NON}" && ${REQ_CHANGE} != "${TS_CHANGE_NEX}" ]] ||
+		[[ ${RES_CHANGE} != "${TS_CHANGE_NON}" && ${RES_CHANGE} != "${TS_CHANGE_NEX}" ]]; then
+		if [[ -${CERT_CHANGE} == "${TS_CHANGE_NEW}" ]]; then
 			hook_echo "Adding TSA ${SERVER_DIR} to branch ${b}"
 		else
 			hook_echo "Updating TSA ${SERVER_DIR} to branch ${b}"
@@ -832,16 +924,15 @@ function comprehend_change() {
 	fi
 
 	# Removed TSAs
-	if [[ ! -f "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" ]] &&
-		[[ ! -f ".${SERVER_DIRECTORY}/${TS_SERVER_URL}" ]]; then
+	if [[ ! -f "${CERT_PATH}" ]] &&
+		[[ ! -f "${URL_PATH}" ]]; then
 		hook_echo "Removing TSA ${SERVER_DIR} from branch ${b}"
-		git rm "${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
-			".${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}"
-
+		git rm "./${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
+			"./${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}" || return $?
 		return $TS_OK
 	fi
 
-	return $TS_ERROR
+	return $TS_OK
 }
 
 function commit_timestamps() {

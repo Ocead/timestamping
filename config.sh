@@ -87,8 +87,20 @@ function copy_hooks() {
 
 function add_to_gitattributes() {
 	local LINE=$1
-	if ! grep -q -F -x "${LINE}" .gitattributes >/dev/null 2>/dev/null; then
+	touch ".gitattributes"
+	if ! grep -q -F "${LINE}" < <(tr -s ' ' <.gitattributes); then
 		echo "${LINE}" >>.gitattributes
+	fi
+}
+
+function file_is_also_object() {
+	local FILE_PATH=$1
+	local FILE_HASH
+	if FILE_HASH=$(git hash-object "${FILE_PATH}"); then
+		git show "${FILE_HASH}" | diff --strip-trailing-cr "${FILE_PATH}" -
+		return $?
+	else
+		return 1
 	fi
 }
 
@@ -343,10 +355,13 @@ if [ $# -eq 0 ]; then
 	exit 4
 fi
 
-if [[ ${OPT_REMOVE} == false && ${OPT_PURGE} == false ]]; then
-	install_timestamping "$1"
-else
-	uninstall_timestamping "$1"
-fi
+(
+	cd "$(dirname "$0")" || exit 255
+	if [[ ${OPT_REMOVE} == false && ${OPT_PURGE} == false ]]; then
+		install_timestamping "$(realpath "$1")"
+	else
+		uninstall_timestamping "$(realpath "$1")"
+	fi
+)
 
 exit 0

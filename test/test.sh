@@ -63,7 +63,7 @@ function add_custom_diff_tsa() {
 function add_custom_cacert_tsa() {
 	git checkout "sig-"
 	mkdir "./rfc3161/timestamp.digicert.com"
-	echo "curl 'https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem'" >"./rfc3161/timestamp.digicert.com/cacert.sh"
+	echo 'curl "https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem"' >"./rfc3161/timestamp.digicert.com/cacert.sh"
 	git add "./rfc3161/timestamp.digicert.com/cacert.sh"
 	git commit -m "Added custom certificate TSA" ./rfc3161/timestamp.digicert.com/*
 
@@ -82,7 +82,7 @@ function add_custom_request_tsa() {
 	mkdir "./rfc3161/timestamp.digicert.com"
 	curl "https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem" >"./rfc3161/timestamp.digicert.com/cacert.pem"
 	echo "openssl ts -query -cert -sha512 <&0" >"./rfc3161/timestamp.digicert.com/request.sh"
-	git add "./rfc3161/timestamp.digicert.com/cacert.pem" "./rfc3161/timestamp.digicert.com/url" "./rfc3161/timestamp.digicert.com/request.sh"
+	git add "./rfc3161/timestamp.digicert.com/cacert.pem" "./rfc3161/timestamp.digicert.com/request.sh"
 	git commit -m "Added custom request TSA" ./rfc3161/timestamp.digicert.com/*
 
 	# Checkout original branch
@@ -442,7 +442,7 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-certificate"* || ${TEST_NAME
 	echo ""
 fi
 
-# TSA with custom certificate
+# TSA with custom request
 if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-request"* || ${TEST_NAME} == "custom" ]]; then
 	echo -e "[\e[0;32mTEST\e[0m]: Test with custom request"
 	REPO_PATH="./test/target/custom-request"
@@ -473,7 +473,7 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-request"* || ${TEST_NAME} ==
 	echo ""
 fi
 
-# TSA with custom certificate
+# TSA with custom response
 if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-response"* || ${TEST_NAME} == "custom" ]]; then
 	echo -e "[\e[0;32mTEST\e[0m]: Test with custom response"
 	REPO_PATH="./test/target/custom-response"

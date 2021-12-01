@@ -58,7 +58,7 @@ function ts-pre-push_impl() {
 
 function ts-pre-push() {
 	# shellcheck source=timestamping.sh
-	source "$(dirname "$(realpath "$0")")/timestamping.sh"
+	source "$(dirname "$(realpath "$0")")/timestamping.sh" || return 128
 
 	if_enabled in_environment ts-pre-push_impl "$@"
 	return $?

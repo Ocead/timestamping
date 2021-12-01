@@ -64,7 +64,7 @@ function ts-post-commit_impl() {
 	local BRANCH
 	BRANCH=$(get_branch)
 
-	if [[ ${BRANCH} == ${TS_BRANCH_PREFIX}/* ]]; then
+	if [[ ${BRANCH} == "${TS_BRANCH_PREFIX}/"* ]]; then
 		return 0
 	elif [[ "${BRANCH}" == "${TS_BRANCH_PREFIX}-" ]]; then
 		COMMIT_ID=$(git rev-parse HEAD)
@@ -77,7 +77,7 @@ function ts-post-commit_impl() {
 
 function ts-post-commit() {
 	# shellcheck source=timestamping.sh
-	source "$(dirname "$(realpath "$0")")/timestamping.sh"
+	source "$(dirname "$(realpath "$0")")/timestamping.sh" || return 128
 
 	if_enabled in_environment ts-post-commit_impl
 	return $?
