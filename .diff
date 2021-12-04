@@ -1,374 +1,755 @@
 Written by Johannes Milczewski
+diff --git a/README.md b/README.md
+index 4d64bcb9883a081e7c2c3bbff6bdb42747e22ce0..d5c4d8f4c61e3beb9437f01afb72bebc2fd9642b 100644
+--- a/README.md
++++ b/README.md
+@@ -121,19 +121,19 @@ git checkout "sig/single"
+ 
+ to check out the timestamps created for commits on branch `single`.
+ 
+-To find the timestamp of a specific commit, refer to this diagram:
+-
+-```
+-┊ ┊
+-o │ <- Merged timestamp/actual commit
+-│╲│
+-│ o <- Actual commit
+-│ │
+-o │ <- Timestamp commit
+-│ ┊
+-┊ ┴ <- Actual branch
+-┴   <- Signing branch
+-```
++To find the timestamp of a specific commit, refer to this commit history graph:
++
++<pre>
++<code><span style="color:purple">┊</span> <span style="color:darkblue">┊</span>
++o <span style="color:darkblue">│</span> <- Merged timestamp/actual commit
++<span style="color:purple">│</span><span style="color:darkblue">╲│</span>
++<span style="color:purple">│</span> o <- Actual commit
++<span style="color:purple">│</span> <span style="color:green">│</span>
++o <span style="color:green">│</span> <- Timestamp commit
++<span style="color:purple">│</span> <span style="color:green">┊</span>
++<span style="color:purple">┊</span> <span style="color:green">┴</span> <- Actual branch
++<span style="color:purple">┴</span>   <- Signing branch</code>
++</pre>
+ 
+ As the timestamps are created before the actual commits, they can not refer to the actual commit. Therefore, the actual
+ commit is merged into the signing branch afterwards, so that both the timestamp and actual commit are previous commits
+@@ -222,9 +222,30 @@ a repository where this software is installed to, do the following steps:
+ ### Customising a TSA configuration
+ 
+ By placing additional files inside a TSA configuration's directory, you can further customize how timestamps from that
+-TSA are generated:
++TSA are generated. Here is a fully customized TSA configuration directory:
+ 
+-#### Timestamp server URL
++<pre>
++<code>./
++└ rfc3161/
++  └ freeTSA/
++    ├ .diff
++    ├ cacert.pem
++    ├ <a href="#tsa_certificate_bundle">cacert.sh</a>
++    ├ <a href="#diffs">diff.sh</a>
++    ├ <a href="#timestamp_requests">request.sh</a>
++    ├ request.tsq
++    ├ <a href="#timestamp_responses">response.sh</a>
++    ├ response.tsr
++    └ <a href="#tsa_server_url">url</a>
++...</code>
++</pre>
++
++The following customizations are recognized:
++
++<ul>
++<li>
++
++#### <span id="tsa_server_url">TSA server URL</span>
+ 
+ **File:** `url`
+ 
+@@ -238,14 +259,17 @@ Use this to specify a protocol and resource on the server domain.
+ ```
+ https://freetsa.org/tsr
+ ```
++</li>
++<li>
++
+ 
+-#### TSA certificate chains
++#### <span id="tsa_certificate_bundle">TSA certificate bundle</span>
+ 
+ **File:** <code>cacert</code><code>.sh</code>
+ 
+ **Description:**
+ If existent, is called when before verifying the timestamp before the actual commit, and it's output is piped into the
+-certificate file of the TSA.<br/>
++certificate bundle file of the TSA.<br/>
+ Use this to ensure the timestamps are verified against the current certificate.
+ 
+ **Example:**
+@@ -254,15 +278,17 @@ Use this to ensure the timestamps are verified against the current certificate.
+ ```shell
+ curl --silent https://freetsa.org/files/cacert.pem
+ ```
++</li>
++<li>
+ 
+-#### Diffs
++#### <span id="diffs">Diffs</span>
+ 
+ **File:** <code>diff</code><code>.sh</code>
+ 
+ **Description:**
+ If existent, is called when creating the diff before the actual commit, and it's output is used as a diff to timestamp
+ from that TSA only. The so generated diff file will not be modified further.<br/>
+-Working directory is the repositories root directory.
++Working directory is the repository's root directory.
+ 
+ **Example:**
+ `./rfc3161/freetsa/diff.sh`
+@@ -270,8 +296,10 @@ Working directory is the repositories root directory.
+ ```shell
+ git diff --staged --full-index --binary
+ ```
++</li>
++<li>
+ 
+-#### Timestamp requests
++#### <span id="timestamp_requests">Timestamp requests</span>
+ 
+ **File:** <code>request</code><code>.sh</code>
+ 
+@@ -285,8 +313,10 @@ The diff file will be supplied via <i>stdin</i> and the contents of the request
+ ```shell
+ openssl ts -query -cert -sha512 <&0
+ ```
++</li>
++<li>
+ 
+-#### Timestamp responses
++#### <span id="timestamp_responses">Timestamp responses</span>
+ 
+ **File:** <code>response</code><code>.sh</code>
+ 
+@@ -300,6 +330,8 @@ The request will be supplied via <i>stdin</i> and the contents of the response f
+ ```shell
+ curl --silent --header 'Content-Type: application/timestamp-query' --data-binary @- https://freetsa.org/tsr <&0
+ ```
++</li>
++</ul>
+ 
+ ### Updating a TSA configuration
+ 
+@@ -331,20 +363,23 @@ git config <option> "<value>"
+ |Git config option|Description|Default value|
+ |---|---|---|
+ |`ts.branch.prefix`|The prefix used for branches created through and used by the automated timestamping.<br/>Will be appended with `-` for root branch and with `/<branch-name>` for each branch committed to.|`"sig"`|
++|`ts.branch.pull`|How remote and local signing branches should me managed.<br/>May either be:<ul><li>`"default"`: As configured through `pull.rebase`</li><li>`"merge"`: Merge remote signing branches into local before timestamping or</li><li>`"rebase"`: Rebase remote signing branches into local before timestamping or</li><li>`"keep"`: Don't update local signing branches from remote.</li></ul>|`"merge"`|
++|`ts.branch.withhold`|Whether the contents of timestamping branches should be withheld from remotes.<br/>If `true`, [git-push](https://git-scm.com/docs/git-push) will fail for timestamping branches.|`"false"`|
+ |`ts.commit.prefix`|The prefix used for messages for commits containing timestamps.<br/>Will be appended with the commit message of the actual commit.|`"Timestamp for: "`|
+ |`ts.commit.options`|Options to apply to the `git commit` command for committing timestamps.|`""`|
+-|`ts.diff.notice`|Text added to the start of the timestamped diff files.|`"Written by $(git config --get user.name)"`|
+-|`ts.diff.file`|Name of the generated diff file|`".diff"`|
+-|`ts.diff.type`|Type of diff to be created.<br/>May either be:<br/>`"staged"` for diffs to HEAD, or <br/>`"full"` for diffs to the empty tree object.|`"staged"`|
+-|`ts.server.directory`|The directory containing the timestamp server configurations relative to the repositories root directory.|`"rfc3161"`|
++|`ts.commit.relate`|Whether timestamp commits should be related via merge commits.<br/>May be `true` or `false`.|`"true"`|
++|`ts.diff.notice`|Text added to the start of the timestamped diff files.|<code>"Written by <i>$(git config --get user.name)</i>"</code>|
++|`ts.diff.file`|Name of the generated diff file.|`".diff"`|
++|`ts.diff.type`|Type of diff to be created.<br/>May either be:<br/><ul><li>`"staged"` for diffs to HEAD, or</li><li>`"full"` for diffs to the empty tree object.</li></ul>|`"staged"`|
++|`ts.server.directory`|The directory containing the timestamp server configurations relative to the repository's root directory.|`"rfc3161"`|
+ |`ts.server.url`|Name of the file containing the url of the timestamp server.|`"url"`|
+ |`ts.server.certificate`|Name of the certificate bundle file for a single timestamp server.|`"cacert.pem"`|
++|`ts.server.update`|Whether timestamps should be updated on TSA configuration changes.<br/>May be `true` or `false`.|`"true"`|
+ |`ts.request.file`|Name of the generated timestamp request file.|`"request.tsq"`|
+ |`ts.request.options`|Options for creating the timestamp request file through `openssl ts -query`.|`"-cert -sha256 -no_nonce"`|
+ |`ts.response.file`|Name of the received timestamp response file.|`"response.tsr"`|
+ |`ts.response.options`|Options for requesting the timestamp from the server through `curl`.|`""`|
+ |`ts.response.verify`|Whether the received timestamp should be verified against the diff and request file.<br/>May be `true` or `false`.|`"true"`|
+-|`ts.push.withhold`|Whether timestamping commits should be withheld from remotes.<br/>If `true`, [git-push](https://git-scm.com/docs/git-push) will fail for timestamping branches.|`"false"`|
+ |`ts.enabled`|Whether automated timestamping should be triggered on commits.<br/>May be `true` or `false`.|`"true"`|
+ 
+ > ⚠ Warning: Set the paths and filenames so that they don't interfere with what you plan to commit.
 diff --git a/config.sh b/config.sh
-index 4f4dae24732394235ebfc1a94bf2d26b3ffff091..e36a92ecfa3e826a6fdf6b3cd4bf339c60687d9d 100644
+index e36a92ecfa3e826a6fdf6b3cd4bf339c60687d9d..6bc97920361498385f9d1433808c90d467e8e30c 100644
 --- a/config.sh
 +++ b/config.sh
-@@ -87,11 +87,23 @@ function copy_hooks() {
+@@ -14,6 +14,7 @@ Installs automated timestamping into a git repository
  
- function add_to_gitattributes() {
- 	local LINE=$1
--	if ! grep -q -F -x "${LINE}" .gitattributes >/dev/null 2>/dev/null; then
-+	touch ".gitattributes"
-+	if ! grep -q -F "${LINE}" < <(tr -s ' ' <.gitattributes); then
- 		echo "${LINE}" >>.gitattributes
- 	fi
+ Options:
+     -d, --default install with default options
++    -f, --force   don't check files when copying/deleting
+     -h, --help    show this help text
+     -r, --remove  removes automated timestamping, but keeps the generated timestamps
+     -p, --purge   removes automated timestamping and the generated timestamps"
+@@ -22,8 +23,12 @@ Options:
+ # Prompts all git config options
+ function prompt_options() {
+ 	read -r -p "Enter the branch prefix [sig]: " TS_BRANCH_PREFIX
++	read -r -p "Enter how remote and local signing branches should be managed [merge]: " TS_BRANCH_REMOTE
++	read -r -p "Enter whether timestamps should be withheld from remotes [false]: " TS_BRANCH_WITHHOLD
++
+ 	read -r -p "Enter the commit prefix [Timestamp for: ]: " TS_COMMIT_PREFIX
+-	read -r -p "Enter the commit options []: " COMMIT_OPTIONS
++	read -r -p "Enter the commit options []: " TS_COMMIT_OPTIONS
++	read -r -p "Enter whether timestamp commits should be related to actual [true]: " TS_COMMIT_RELATE
+ 
+ 	read -r -p "Enter the diff notice [Written by $(git config --get user.name)]: " TS_DIFF_NOTICE
+ 	read -r -p "Enter the diff file name [.diff]: " TS_DIFF_FILE
+@@ -32,6 +37,7 @@ function prompt_options() {
+ 	read -r -p "Enter the TSA configuration directory name [rfc3161]: " TS_SERVER_DIRECTORY
+ 	read -r -p "Enter the TSA certificate bundle file name [cacert.pem]: " TS_SERVER_CERTIFICATE
+ 	read -r -p "Enter the TSA url file name [url]: " TS_SERVER_URL
++	read -r -p "Enter whether existing timestamp should be updated on TSA config changes [true]: " TS_SERVER_UPDATE
+ 
+ 	read -r -p "Enter the timestamp request file name [request.tsq]: " TS_REQUEST_FILE
+ 	read -r -p "Enter the timestamp request options [-cert -sha256 -no_nonce]: " TS_REQUEST_OPTIONS
+@@ -39,8 +45,6 @@ function prompt_options() {
+ 	read -r -p "Enter the timestamp response file name [response.tsr]: " TS_RESPONSE_FILE
+ 	read -r -p "Enter the timestamp response options []: " TS_RESPONSE_OPTIONS
+ 	read -r -p "Enter whether timestamps should be verified [true]: " TS_RESPONSE_VERIFY
+-
+-	read -r -p "Enter whether timestamps should be withheld from remotes [false]: " TS_PUSH_WITHHOLD
  }
  
-+function file_is_also_object() {
-+	local FILE_PATH=$1
-+	local FILE_HASH
-+	if FILE_HASH=$(git hash-object "${FILE_PATH}"); then
-+		git show "${FILE_HASH}" | diff --strip-trailing-cr "${FILE_PATH}" -
-+		return $?
-+	else
-+		return 1
-+	fi
+ # Sets all git config options
+@@ -48,8 +52,12 @@ function set_options() {
+ 	git config ts.enabled "true"
+ 
+ 	git config --local ts.branch.prefix "${TS_BRANCH_PREFIX:-"sig"}"
++	git config --local ts.branch.remote "${TS_BRANCH_REMOTE:-"merge"}"
++	git config --local ts.branch.withhold "${TS_BRANCH_WITHHOLD:-"false"}"
++
+ 	git config --local ts.commit.prefix "${TS_COMMIT_PREFIX:-"Timestamp for: "}"
+-	git config --local ts.commit.options "${COMMIT_OPTIONS:-""}"
++	git config --local ts.commit.options "${TS_COMMIT_OPTIONS:-""}"
++	git config --local ts.commit.relate "${TS_COMMIT_RELATE:-""true}"
+ 
+ 	git config --local ts.diff.notice "${TS_DIFF_NOTICE:-"Written by $(git config --get user.name)"}"
+ 	git config --local ts.diff.file "${TS_DIFF_FILE:-".diff"}"
+@@ -58,6 +66,7 @@ function set_options() {
+ 	git config --local ts.server.directory "${TS_SERVER_DIRECTORY:-"rfc3161"}"
+ 	git config --local ts.server.certificate "${TS_SERVER_CERTIFICATE:-"cacert.pem"}"
+ 	git config --local ts.server.url "${TS_SERVER_URL:-"url"}"
++	git config --local ts.server.update "${TS_SERVER_UPDATE:-"true"}"
+ 
+ 	git config --local ts.request.file "${TS_REQUEST_FILE:-"request.tsq"}"
+ 	git config --local ts.request.options "${TS_REQUEST_OPTIONS:-"-cert -sha256 -no_nonce"}"
+@@ -65,24 +74,30 @@ function set_options() {
+ 	git config --local ts.respone.file "${TS_RESPONSE_FILE:-"response.tsr"}"
+ 	git config --local ts.respone.options "${TS_RESPONSE_OPTIONS:-""}"
+ 	git config --local ts.respone.verify "${TS_RESPONSE_VERIFY:-"true"}"
+-
+-	git config --local ts.push.withhold "${TS_PUSH_WITHHOLD:-"false"}"
+ }
+ 
+ # Copy the hooks into the repository
+ function copy_hooks() {
+-	local REPO_PATH=$1
++	local HOOKS_PATH=$1
+ 	local FILES=("commit-msg" "post-commit" "pre-push" "timestamping.sh")
+ 	for f in "${FILES[@]}"; do
+-		[[ ! -f "${REPO_PATH}/${f}" ]] || {
+-			script_echo "ERROR: Could not copy the required files"
++		maybe_copy "./hooks" "${HOOKS_PATH}" "${f}" || {
++			script_echo "Could not copy file ${f}"
++			exit 4
++		}
++	done
 +}
 +
- function files_are_same() {
- 	local LHP=$1
- 	local RHP=$2
-@@ -343,10 +355,13 @@ if [ $# -eq 0 ]; then
- 	exit 4
- fi
- 
--if [[ ${OPT_REMOVE} == false && ${OPT_PURGE} == false ]]; then
--	install_timestamping "$1"
--else
--	uninstall_timestamping "$1"
--fi
-+(
-+	cd "$(dirname "$0")" || exit 255
-+	if [[ ${OPT_REMOVE} == false && ${OPT_PURGE} == false ]]; then
-+		install_timestamping "$(realpath "$1")"
-+	else
-+		uninstall_timestamping "$(realpath "$1")"
-+	fi
-+)
- 
- exit 0
-diff --git a/hooks/commit-msg b/hooks/commit-msg
-index 7f6a54828689575bb24a6f7af6c22a631ca3fc58..7f947d428daef7585dd49f20b6e233366ef1c391 100644
---- a/hooks/commit-msg
-+++ b/hooks/commit-msg
-@@ -73,7 +73,11 @@ function ts-commit-msg_impl() {
- 	STASH=$?
- 
- 	# Create signing branch if non-existent
--	checkout_signing "${BRANCH}"
-+	checkout_signing "${BRANCH}" || {
-+		local RETURN=$?
-+		hook_echo "ERROR: Could not check out signing branch"
-+		exit $?
-+	}
- 
- 	# Write diff file
- 	write_diff "${DIFF}"
-@@ -105,7 +109,7 @@ function ts-commit-msg_impl() {
- 
- function ts-commit-msg() {
- 	# shellcheck source=timestamping.sh
--	source "$(dirname "$(realpath "$0")")/timestamping.sh"
-+	source "$(dirname "$(realpath "$0")")/timestamping.sh" || return 128
- 
- 	if_enabled in_environment ts-commit-msg_impl "$@"
- 	return $?
-diff --git a/hooks/post-commit b/hooks/post-commit
-index 104aa0a7d7ea0b540a2ff79057d5057a33f63e11..2711be4353c53422b790f2f88e8e7df2866e6f62 100644
---- a/hooks/post-commit
-+++ b/hooks/post-commit
-@@ -64,7 +64,7 @@ function ts-post-commit_impl() {
- 	local BRANCH
- 	BRANCH=$(get_branch)
- 
--	if [[ ${BRANCH} == ${TS_BRANCH_PREFIX}/* ]]; then
-+	if [[ ${BRANCH} == "${TS_BRANCH_PREFIX}/"* ]]; then
- 		return 0
- 	elif [[ "${BRANCH}" == "${TS_BRANCH_PREFIX}-" ]]; then
- 		COMMIT_ID=$(git rev-parse HEAD)
-@@ -77,7 +77,7 @@ function ts-post-commit_impl() {
- 
- function ts-post-commit() {
- 	# shellcheck source=timestamping.sh
--	source "$(dirname "$(realpath "$0")")/timestamping.sh"
-+	source "$(dirname "$(realpath "$0")")/timestamping.sh" || return 128
- 
- 	if_enabled in_environment ts-post-commit_impl
- 	return $?
-diff --git a/hooks/pre-push b/hooks/pre-push
-index 531576067b972f9dcbe13a9cf30f1f5599d654fa..1dbe19a47a8b47a63379646e976b778c117963b9 100644
---- a/hooks/pre-push
-+++ b/hooks/pre-push
-@@ -58,7 +58,7 @@ function ts-pre-push_impl() {
- 
- function ts-pre-push() {
- 	# shellcheck source=timestamping.sh
--	source "$(dirname "$(realpath "$0")")/timestamping.sh"
-+	source "$(dirname "$(realpath "$0")")/timestamping.sh" || return 128
- 
- 	if_enabled in_environment ts-pre-push_impl "$@"
- 	return $?
-diff --git a/hooks/timestamping.sh b/hooks/timestamping.sh
-index a83f290f14fa08529bc2b7c1cc8f15eeba29c5e5..ec213a7efec1b911659e1c9faa5df7f4cd96d67c 100644
---- a/hooks/timestamping.sh
-+++ b/hooks/timestamping.sh
-@@ -445,6 +445,7 @@ function update_timestamps() {
- 	STASH=$?
- 
- 	local SIG_COUNT=0
-+	local ERR_COUNT=0
- 
- 	for b in "${BRANCHES[@]}"; do
- 		hook_echo "Applying TSA changes to ${b}"
-@@ -454,15 +455,23 @@ function update_timestamps() {
- 		for d in "${TS_SERVER_DIRECTORY}/"*/; do
- 			if comprehend_change "${b}" "${d}"; then
- 				SIG_COUNT=$((SIG_COUNT + 1))
-+			else
-+				ERR_COUNT=$((ERR_COUNT + 1))
-+				hook_echo "ERROR: Could not create timestamp for ${d}"
- 			fi
- 		done
- 
--		if [[ ${SIG_COUNT} -gt 0 ]]; then
--			hook_echo "Committing timestamps"
--			add_ts_files
--			amend_ts_files "Applied updates from '${COMMIT_ID}' to ${b}"
-+		if [[ ${ERR_COUNT} -eq 0 ]]; then
-+			if [[ ${SIG_COUNT} -gt 0 ]]; then
-+				hook_echo "Committing timestamps"
-+				add_ts_files
-+				amend_ts_files "Applied updates from '${COMMIT_ID}' to ${b}"
-+			else
-+				hook_echo "No timestamps to amend"
-+				rm "${TS_DIFF_FILE}" >/dev/null
-+			fi
- 		else
--			hook_echo "No timestamps to amend"
-+			git reset -- "./${SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
- 			rm "${TS_DIFF_FILE}" >/dev/null
- 		fi
++# Copy the hooks from the repository
++function remove_hooks() {
++	local HOOKS_PATH=$1
++	local FILES=("commit-msg" "post-commit" "pre-push" "timestamping.sh")
++	for f in "${FILES[@]}"; do
++		maybe_remove "./hooks" "${HOOKS_PATH}" "${f}" || {
++			script_echo "Could not remove file ${f}"
+ 			exit 4
+ 		}
  	done
-@@ -480,7 +489,7 @@ function update_timestamps() {
- # 	1: Changes were stashed
- function maybe_stash() {
- 	if git rev-parse HEAD >/dev/null 2>/dev/null; then
--		git stash push >/dev/null 2>/dev/null
-+		git stash push >/dev/null 2>/dev/null && hook_echo "Stashing changes"
+-	cp ./hooks/* "${REPO_PATH}/.git/hooks/" >/dev/null || {
+-		script_echo "ERROR: Could not copy the required files"
+-		exit 3
+-	}
+ }
+ 
+ function add_to_gitattributes() {
+@@ -97,7 +112,7 @@ function file_is_also_object() {
+ 	local FILE_PATH=$1
+ 	local FILE_HASH
+ 	if FILE_HASH=$(git hash-object "${FILE_PATH}"); then
+-		git show "${FILE_HASH}" | diff --strip-trailing-cr "${FILE_PATH}" -
++		git show "${FILE_HASH}" 2>/dev/null | diff --strip-trailing-cr "${FILE_PATH}" - >/dev/null 2>/dev/null
  		return $?
  	else
  		return 1
-@@ -491,7 +500,8 @@ function maybe_stash() {
- # Arguments:
- # 	$1 1, if changes should be unstashed, 0 otherwise
- function maybe_unstash() {
--	if [[ $1 != 0 ]]; then
-+	if [[ $1 == 0 ]]; then
-+		hook_echo "Unstashing changes"
- 		git stash pop >/dev/null 2>/dev/null
- 	fi
- }
-@@ -504,8 +514,8 @@ function maybe_unstash() {
- # 	&1: The name of the branch
- function get_branch() {
- 	local BRANCH
--	if ! BRANCH=$(git symbolic-ref --short HEAD); then
--		if ! BRANCH=$(git config init.defaultBranch); then
-+	if ! BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
-+		if ! BRANCH=$(git config init.defaultBranch 2>/dev/null); then
- 			BRANCH="master"
- 		fi
- 	fi
-@@ -582,7 +592,7 @@ function checkout_signing() {
+@@ -113,14 +128,29 @@ function files_are_same() {
+ 		local RHH
+ 		LHH=$(git hash-object "${LHP}")
+ 		RHH=$(git hash-object "${RHP}")
+-		test "${LHH}" == "${RHH}"
++		test "${LHH}" == "${RHH}" || diff --strip-trailing-cr "${LHP}" "${RHP}" >/dev/null 2>/dev/null
  		return $?
  	else
- 
--		if git checkout "${TS_BRANCH_PREFIX}-"; then
-+		if git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null; then
- 			hook_echo "Checking out ${TS_BRANCH_PREFIX}-"
- 			git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null && hook_echo "Checking out new ${SIGNING_BRANCH}"
- 		fi
-@@ -794,27 +804,109 @@ function relate_branches() {
- # endregion
- 
- function comprehend_change() {
-+	local TS_CHANGE_NON=0
-+	local TS_CHANGE_NEW=1
-+	local TS_CHANGE_MOD=2
-+	local TS_CHANGE_DEL=3
-+	local TS_CHANGE_NEX=4
-+	local TS_CHANGE_ILL=5
-+
-+	function comprehend_file_change() {
-+		local FILE_PATH=$1
-+		local OLD_PATH
-+		local REF_NOW
-+		local REF_OLD
-+
-+		if [ $# == 2 ]; then
-+			OLD_PATH=$2
-+		else
-+			OLD_PATH="${FILE_PATH}"
-+		fi
-+
-+		REF_NOW=$(git rev-parse @~0:"${FILE_PATH}" 2>/dev/null) || REF_NOW=""
-+		REF_OLD=$(git rev-parse @~1:"${OLD_PATH}" 2>/dev/null) || REF_OLD=""
-+
-+		if [[ ${REF_NOW} == "${REF_OLD}" ]]; then
-+			if [[ -n ${REF_NOW} ]]; then
-+				return $TS_CHANGE_NON
-+			else
-+				return $TS_CHANGE_NEX
-+			fi
-+		elif [[ -n ${REF_NOW} ]]; then
-+			if [[ -z ${REF_OLD} ]]; then
-+				return $TS_CHANGE_NEW
-+			elif [[ -n ${REF_OLD} ]]; then
-+				return $TS_CHANGE_MOD
-+			fi
-+		elif [[ -z ${REF_NOW} && -n ${REF_OLD} ]]; then
-+			return $TS_CHANGE_DEL
-+		else
-+			return $TS_CHANGE_ILL
-+		fi
-+	}
-+
-+	function echo_file_change() {
-+		local FILE_PATH=$1
-+		local FILE_CHANGE=$2
-+
-+		case ${FILE_CHANGE} in
-+		"$TS_CHANGE_NON") hook_echo "${FILE_PATH} wasn't changed" ;;
-+		"$TS_CHANGE_NEW") hook_echo "${FILE_PATH} was added" ;;
-+		"$TS_CHANGE_MOD") hook_echo "${FILE_PATH} was modified" ;;
-+		"$TS_CHANGE_DEL") hook_echo "${FILE_PATH} was deleted" ;;
-+		"$TS_CHANGE_NEX") hook_echo "${FILE_PATH} doesn't exist" ;;
-+		"$TS_CHANGE_ILL") hook_echo "${FILE_PATH} is magical" ;;
-+		esac
-+	}
-+
- 	local BRANCH=$1
- 	local SERVER_DIRECTORY=$2
- 
--	local CERT0
--	local CERT1
--	local URL0
--	local URL1
-+	local CERT_PATH
-+	local OLD_CERT_PATH
-+	local URL_PATH
-+	local REQ_PATH
-+	local RES_PATH
-+
-+	local CERT_CHANGE
-+	local URL_CHANGE
-+	local REQ_CHANGE
-+	local RES_CHANGE
-+
-+	CERT_PATH=$(canonize "${SERVER_DIRECTORY}/cacert.sh")
-+	OLD_CERT_PATH=$(canonize "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}")
-+	URL_PATH=$(canonize "${SERVER_DIRECTORY}/${TS_SERVER_URL}")
-+	REQ_PATH=$(canonize "${SERVER_DIRECTORY}/request.sh")
-+	RES_PATH=$(canonize "${SERVER_DIRECTORY}/response.sh")
-+
-+	if ! git rev-parse @~0:"${CERT_PATH}" >/dev/null 2>/dev/null; then
-+		CERT_PATH="${OLD_CERT_PATH}"
-+	fi
-+
-+	comprehend_file_change "${CERT_PATH}" "${OLD_CERT_PATH}"
-+	CERT_CHANGE=$?
-+	comprehend_file_change "${URL_PATH}"
-+	URL_CHANGE=$?
-+	comprehend_file_change "${REQ_PATH}"
-+	REQ_CHANGE=$?
-+	comprehend_file_change "${RES_PATH}"
-+	RES_CHANGE=$?
- 
--	CERT0=$(git rev-parse @~0:"${SERVER_DIRECTORY}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT0=""
--	CERT1=$(git rev-parse @~1:"${SERVER_DIRECTORY}${TS_SERVER_CERTIFICATE}" 2>/dev/null) || CERT1=""
--	URL0=$(git rev-parse @~0:"${SERVER_DIRECTORY}${TS_SERVER_URL}" 2>/dev/null) || URL0=""
--	URL1=$(git rev-parse @~1:"${SERVER_DIRECTORY}${TS_SERVER_URL}" 2>/dev/null) || URL1=""
-+	# echo_file_change "${CERT_PATH}" "${CERT_CHANGE}"
-+	# echo_file_change "${URL_PATH}" "${URL_CHANGE}"
-+	# echo_file_change "${REQ_PATH}" "${REQ_CHANGE}"
-+	# echo_file_change "${RES_PATH}" "${RES_CHANGE}"
- 
- 	local SERVER_DIR
- 	SERVER_DIR=${SERVER_DIRECTORY#*${TS_SERVER_DIRECTORY}/}
- 	SERVER_DIR=${SERVER_DIR%/*}
- 
- 	# Added/Modified TSAs
--	if [[ -n ${CERT0} && ${CERT0} != "${CERT1}" ]] ||
--		[[ -n ${URL0} && ${URL0} != "${URL1}" ]]; then
--		if [[ -z ${CERT1} && -z ${URL1} ]]; then
-+	if [[ ${CERT_CHANGE} == "${TS_CHANGE_NEW}" || ${CERT_CHANGE} == "${TS_CHANGE_MOD}" ]] ||
-+		[[ ${URL_CHANGE} == "${TS_CHANGE_NEW}" || ${URL_CHANGE} == "${TS_CHANGE_MOD}" ]] ||
-+		[[ ${REQ_CHANGE} != "${TS_CHANGE_NON}" && ${REQ_CHANGE} != "${TS_CHANGE_NEX}" ]] ||
-+		[[ ${RES_CHANGE} != "${TS_CHANGE_NON}" && ${RES_CHANGE} != "${TS_CHANGE_NEX}" ]]; then
-+		if [[ -${CERT_CHANGE} == "${TS_CHANGE_NEW}" ]]; then
- 			hook_echo "Adding TSA ${SERVER_DIR} to branch ${b}"
- 		else
- 			hook_echo "Updating TSA ${SERVER_DIR} to branch ${b}"
-@@ -832,16 +924,15 @@ function comprehend_change() {
+ 		return 1
  	fi
- 
- 	# Removed TSAs
--	if [[ ! -f "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" ]] &&
--		[[ ! -f ".${SERVER_DIRECTORY}/${TS_SERVER_URL}" ]]; then
-+	if [[ ! -f "${CERT_PATH}" ]] &&
-+		[[ ! -f "${URL_PATH}" ]]; then
- 		hook_echo "Removing TSA ${SERVER_DIR} from branch ${b}"
--		git rm "${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
--			".${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}"
--
-+		git rm "./${SERVER_DIRECTORY}/${TS_REQUEST_FILE}" \
-+			"./${SERVER_DIRECTORY}/${TS_RESPONSE_FILE}" || return $?
- 		return $TS_OK
- 	fi
- 
--	return $TS_ERROR
-+	return $TS_OK
  }
  
- function commit_timestamps() {
-diff --git a/test/test.sh b/test/test.sh
-index 614591692e3503544eae3cebf2ebbbb1908a3f0d..f3345c6a4567b521f2d03364f0f25863c5ef7a6f 100644
---- a/test/test.sh
-+++ b/test/test.sh
-@@ -63,7 +63,7 @@ function add_custom_diff_tsa() {
- function add_custom_cacert_tsa() {
- 	git checkout "sig-"
- 	mkdir "./rfc3161/timestamp.digicert.com"
--	echo "curl 'https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem'" >"./rfc3161/timestamp.digicert.com/cacert.sh"
-+	echo 'curl "https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem"' >"./rfc3161/timestamp.digicert.com/cacert.sh"
- 	git add "./rfc3161/timestamp.digicert.com/cacert.sh"
- 	git commit -m "Added custom certificate TSA" ./rfc3161/timestamp.digicert.com/*
+-function remove_if_same() {
++function maybe_copy() {
++	local LOCAL_PATH=$1
++	local REPO_PATH=$2
++	local FILE=$3
++	local LHP="${LOCAL_PATH}/${FILE}"
++	local RHP="${REPO_PATH}/${FILE}"
++
++	if [[ ! -f "${RHP}" || ${OPT_FORCE} == "true" ]]; then
++		cp "${LHP}" "${RHP}"
++	elif [[ -d .git ]]; then
++		file_is_also_object "${RHP}" && cp "${LHP}" "${RHP}"
++	fi
++	return $?
++}
++
++function maybe_remove() {
+ 	local LOCAL_PATH=$1
+ 	local REPO_PATH=$2
+ 	local FILE=$3
+@@ -128,8 +158,13 @@ function remove_if_same() {
+ 	local RHP="${REPO_PATH}/${FILE}"
  
-@@ -82,7 +82,7 @@ function add_custom_request_tsa() {
- 	mkdir "./rfc3161/timestamp.digicert.com"
- 	curl "https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem" >"./rfc3161/timestamp.digicert.com/cacert.pem"
- 	echo "openssl ts -query -cert -sha512 <&0" >"./rfc3161/timestamp.digicert.com/request.sh"
--	git add "./rfc3161/timestamp.digicert.com/cacert.pem" "./rfc3161/timestamp.digicert.com/url" "./rfc3161/timestamp.digicert.com/request.sh"
-+	git add "./rfc3161/timestamp.digicert.com/cacert.pem" "./rfc3161/timestamp.digicert.com/request.sh"
- 	git commit -m "Added custom request TSA" ./rfc3161/timestamp.digicert.com/*
+ 	if [[ -f "${RHP}" ]]; then
+-		files_are_same "${LHP}" "${RHP}" && rm "${RHP}"
++		if [[ -d .git ]] && file_is_also_object "${RHP}" || [[ ${OPT_FORCE} == "true" ]]; then
++			rm "${RHP}"
++		else
++			files_are_same "${LHP}" "${RHP}" && rm "${RHP}"
++		fi
+ 	fi
++	return $?
+ }
  
- 	# Checkout original branch
-@@ -442,7 +442,7 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-certificate"* || ${TEST_NAME
- 	echo ""
- fi
+ # Create initial timestamping objects
+@@ -159,31 +194,33 @@ function configure_repo() {
  
--# TSA with custom certificate
-+# TSA with custom request
- if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-request"* || ${TEST_NAME} == "custom" ]]; then
- 	echo -e "[\e[0;32mTEST\e[0m]: Test with custom request"
- 	REPO_PATH="./test/target/custom-request"
-@@ -473,7 +473,7 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-request"* || ${TEST_NAME} ==
- 	echo ""
- fi
+ 	# Checkout root signing branch
+ 	script_echo "Checking out root signing branch"
+-	git checkout --orphan "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null
+-
+-	# Create initial commit in root signing branch
+-	script_echo "Creating TSA config directory"
+-	TS_SERVER_DIRECTORY=$(git config --get ts.server.directory)
+-	mkdir -p "./${TS_SERVER_DIRECTORY}"
+-	echo "Place your TSA configuration in this directory." >"./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE"
+-	add_to_gitattributes "*.diff binary"
+-	add_to_gitattributes "*.pem binary"
+-	add_to_gitattributes "*.tsq binary"
+-	add_to_gitattributes "*.tsr binary"
+-	add_to_gitattributes "*.sh text eol=lf"
+-	git add "./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE" >/dev/null 2>/dev/null
+-	git add "./.gitattributes" >/dev/null 2>/dev/null
+-	git commit -m "Initial timestamping commit" -- "./.gitattributes" "./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE" >/dev/null 2>/dev/null
++	if ! git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null; then
++		git checkout --orphan "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null
++
++		# Create initial commit in root signing branch
++		script_echo "Creating TSA config directory"
++		TS_SERVER_DIRECTORY=$(git config --get ts.server.directory)
++		mkdir -p "./${TS_SERVER_DIRECTORY}"
++		echo "Place your TSA configuration in this directory." >"./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE"
++		add_to_gitattributes "*.diff binary"
++		add_to_gitattributes "*.pem binary"
++		add_to_gitattributes "*.tsq binary"
++		add_to_gitattributes "*.tsr binary"
++		add_to_gitattributes "*.sh text eol=lf"
++		git add "./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE" >/dev/null 2>/dev/null
++		git add "./.gitattributes" >/dev/null 2>/dev/null
++		git commit -m "Initial timestamping commit" -- "./.gitattributes" "./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE" >/dev/null 2>/dev/null
++	else
++		script_echo "Root signing branch already present"
++	fi
  
--# TSA with custom certificate
-+# TSA with custom response
- if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-response"* || ${TEST_NAME} == "custom" ]]; then
- 	echo -e "[\e[0;32mTEST\e[0m]: Test with custom response"
- 	REPO_PATH="./test/target/custom-response"
+ 	# Return to previous branch
+ 	script_echo "Checking out actual branch"
+-	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
+-		git checkout "${BRANCH}" >/dev/null 2>/dev/null
+-	else
++	git checkout "${BRANCH}" >/dev/null 2>/dev/null || {
+ 		git checkout --orphan "${BRANCH}" >/dev/null 2>/dev/null
+ 		# Remove timestamping files
+ 		git rm -rf -- "./${TS_SERVER_DIRECTORY}/PLACE_TSA_CONFIGS_HERE" "./.gitattributes" >/dev/null 2>/dev/null
+-	fi
++	}
+ 
+ 	# Pop stashed changes
+ 	if [[ ${STASHED} -eq 0 ]]; then
+@@ -199,10 +236,18 @@ function configure_repo() {
+ # Install automated timestamping to target repository
+ function install_timestamping() {
+ 	local REPO_PATH=$1
++	local HOOKS_PATH
++
++	if ! HOOKS_PATH=$(git --git-dir "${REPO_PATH}" config --get core.hooksPath); then
++		HOOKS_PATH="${REPO_PATH}/.git/hooks"
++	fi
+ 
+ 	local TS_BRANCH_PREFIX
++	local TS_BRANCH_REMOTE
++
+ 	local TS_COMMIT_PREFIX
+-	local COMMIT_OPTIONS
++	local TS_COMMIT_OPTIONS
++	local TS_COMMIT_RELATE
+ 
+ 	local TS_DIFF_NOTICE
+ 	local TS_DIFF_FILE
+@@ -211,6 +256,7 @@ function install_timestamping() {
+ 	local TS_SERVER_DIRECTORY
+ 	local TS_SERVER_CERTIFICATE
+ 	local TS_SERVER_URL
++	local TS_SERVER_UPDATE
+ 
+ 	local TS_REQUEST_FILE
+ 	local TS_REQUEST_OPTIONS
+@@ -219,7 +265,7 @@ function install_timestamping() {
+ 	local TS_RESPONSE_OPTIONS
+ 	local TS_RESPONSE_VERIFY
+ 
+-	copy_hooks "${REPO_PATH}"
++	copy_hooks "${HOOKS_PATH}"
+ 
+ 	(
+ 		cd "${REPO_PATH}" || {
+@@ -251,12 +297,14 @@ function install_timestamping() {
+ 
+ function uninstall_timestamping() {
+ 	local REPO_PATH=$1
++	local HOOKS_PATH
++
++	if ! HOOKS_PATH=$(git --git-dir "${REPO_PATH}" config --get core.hooksPath); then
++		HOOKS_PATH="${REPO_PATH}/.git/hooks"
++	fi
+ 
+ 	script_echo "Removing hooks"
+-	remove_if_same "./hooks" "${REPO_PATH}/.git/hooks" "commit-msg"
+-	remove_if_same "./hooks" "${REPO_PATH}/.git/hooks" "post-commit"
+-	remove_if_same "./hooks" "${REPO_PATH}/.git/hooks" "pre-push"
+-	remove_if_same "./hooks" "${REPO_PATH}/.git/hooks" "timestamping.sh"
++	remove_hooks "${HOOKS_PATH}"
+ 
+ 	if [[ ${OPT_PURGE} == true ]]; then
+ 		(
+@@ -286,8 +334,13 @@ function uninstall_timestamping() {
+ 	script_echo "Unsetting options"
+ 	git config --unset --local ts.enabled
+ 
++	git config --unset --local ts.branch.prefix
++	git config --unset --local ts.branch.remote
++	git config --unset --local ts.branch.withhold
++
+ 	git config --unset --local ts.commit.prefix
+ 	git config --unset --local ts.commit.options
++	git config --unset --local ts.commit.relate
+ 
+ 	git config --unset --local ts.diff.notice
+ 	git config --unset --local ts.diff.file
+@@ -296,6 +349,7 @@ function uninstall_timestamping() {
+ 	git config --unset --local ts.server.directory
+ 	git config --unset --local ts.server.certificate
+ 	git config --unset --local ts.server.url
++	git config --unset --local ts.server.update
+ 
+ 	git config --unset --local ts.request.file
+ 	git config --unset --local ts.request.options
+@@ -304,8 +358,6 @@ function uninstall_timestamping() {
+ 	git config --unset --local ts.respone.options
+ 	git config --unset --local ts.respone.verify
+ 
+-	git config --unset --local ts.push.withhold
+-
+ 	script_echo "Uninstall complete."
+ }
+ 
+@@ -314,6 +366,7 @@ for arg in "$@"; do
+ 	shift
+ 	case "${arg}" in
+ 	"--default") set -- "$@" "-d" ;;
++	"--force") set -- "$@" "-f" ;;
+ 	"--help") set -- "$@" "-h" ;;
+ 	"--remove") set -- "$@" "-r" ;;
+ 	"--purge") set -- "$@" "-p" ;;
+@@ -322,16 +375,20 @@ for arg in "$@"; do
+ done
+ 
+ OPT_DEFAULT=false
++OPT_FORCE=false
+ OPT_REMOVE=false
+ OPT_PURGE=false
+ 
+ # Parse options
+ OPTIND=1
+-while getopts "dhrp" opt; do
++while getopts "dfhrp" opt; do
+ 	case "${opt}" in
+ 	"d")
+ 		OPT_DEFAULT=true
+ 		;;
++	"f")
++		OPT_FORCE=true
++		;;
+ 	"h")
+ 		print_help
+ 		exit 0
+diff --git a/hooks/pre-push b/hooks/pre-push
+index 1dbe19a47a8b47a63379646e976b778c117963b9..5ba76eef7400ec1140f7a1f99a98f7ba38a41542 100644
+--- a/hooks/pre-push
++++ b/hooks/pre-push
+@@ -33,7 +33,7 @@ function ts-pre-push_impl() {
+ 		die 'Call this script only through "git push".'
+ 	fi
+ 
+-	if [[ ${TS_PUSH_WITHHOLD} != "true" ]]; then
++	if [[ ${TS_BRANCH_WITHHOLD} != "true" ]]; then
+ 		return 0
+ 	fi
+ 
+diff --git a/hooks/timestamping.sh b/hooks/timestamping.sh
+index ec213a7efec1b911659e1c9faa5df7f4cd96d67c..106370ed23d04ca9a33d1caa9589a044bcb80494 100644
+--- a/hooks/timestamping.sh
++++ b/hooks/timestamping.sh
+@@ -27,15 +27,16 @@
+ # Error codes
+ TS_ERROR_CALL=128
+ 
+-TS_ERROR_NO_CONFIG_DIR=10
++TS_ERROR_NO_CONFIG_DIR=11
+ 
+-TS_ERROR_WITHHOLD=9
++TS_ERROR_WITHHOLD=10
+ 
+-TS_ERROR_REQUEST=8
+-TS_ERROR_RESPONSE=7
+-TS_ERROR_VERIFY_REQUEST=6
+-TS_ERROR_VERIFY_DATA=5
++TS_ERROR_REQUEST=9
++TS_ERROR_RESPONSE=8
++TS_ERROR_VERIFY_REQUEST=7
++TS_ERROR_VERIFY_DATA=6
+ 
++TS_ERROR_PULL=5
+ TS_ERROR_ROOT_BRANCH=4
+ 
+ TS_ERROR_CONFIG_INVALID=3
+@@ -77,12 +78,18 @@ function in_environment() {
+ 	local RETURN=$TS_OK
+ 
+ 	local TS_BRANCH_PREFIX
++	local TS_BRANCH_REMOTE
++	local TS_BRANCH_WITHHOLD
++
+ 	local TS_COMMIT_PREFIX
++	local TS_COMMIT_OPTIONS=()
++	local TS_COMMIT_RELATE
+ 
+ 	local TS_DIFF_NOTICE
+ 	local TS_DIFF_FILE
+ 	local TS_DIFF_TYPE
+ 
++	local TS_SERVER_UPDATE
+ 	local TS_SERVER_DIRECTORY
+ 	local TS_SERVER_URL
+ 	local TS_SERVER_CERTIFICATE
+@@ -94,17 +101,40 @@ function in_environment() {
+ 	local TS_RESPONSE_OPTIONS=()
+ 	local TS_RESPONSE_VERIFY
+ 
+-	local TS_PUSH_WITHHOLD
+-
+ 	if [[ -z ${TS_ENVIRONMENT_SET+x} ]]; then
+ 		if ! TS_BRANCH_PREFIX=$(git config ts.branch.prefix); then
+ 			echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
+ 			RETURN=$TS_ERROR_CONFIG_UNSET
+ 		fi
++		if ! TS_BRANCH_REMOTE=$(git config ts.branch.remote); then
++			echo 'Run "git config ts.branch.remote" to set the how remote and local signing branch are managed'
++			RETURN=$TS_ERROR_CONFIG_UNSET
++		elif [[ ${TS_BRANCH_REMOTE} != "default" && ${TS_BRANCH_REMOTE} != "merge" && ${TS_BRANCH_REMOTE} != "rebase" && ${TS_BRANCH_REMOTE} != "keep" ]]; then
++			echo 'ERROR: ts.branch.remote must be either "merge" or "rebase" or "keep"'
++		fi
++		if ! TS_BRANCH_WITHHOLD=$(git config ts.branch.withhold); then
++			echo 'Run "git config ts.branch.withhold" to set whether timestamp commits should be withheld from remotes'
++			RETURN=$TS_ERROR_CONFIG_UNSET
++		elif [[ ${TS_BRANCH_WITHHOLD} != "true" && ${TS_BRANCH_WITHHOLD} != "false" ]]; then
++			echo 'ERROR: ts.branch.withhold must be either "true" or "false"'
++			RETURN $TS_ERROR_CONFIG_INVALID
++		fi
++
+ 		if ! TS_COMMIT_PREFIX=$(git config ts.commit.prefix); then
+ 			echo 'Run "git config ts.commit.prefix" to set the signing commit message prefix'
+ 			RETURN=$TS_ERROR_CONFIG_UNSET
+ 		fi
++		if ! mapfile -d " " -t TS_COMMIT_OPTIONS < <(git config ts.commit.options | tr -d '\n'); then
++			echo 'Run "git config ts.commit.options" to set the signing commit options'
++			RETURN=$TS_ERROR_CONFIG_UNSET
++		fi
++		if ! TS_COMMIT_RELATE=$(git config ts.commit.relate); then
++			echo 'Run "git config ts.commit.relate" to set whether timestamp and actual commits should be merged afterwards'
++			RETURN=$TS_ERROR_CONFIG_UNSET
++		elif [[ ${TS_COMMIT_RELATE} != "true" && ${TS_COMMIT_RELATE} != "false" ]]; then
++			echo 'ERROR: ts.commit.relate must be either "true" or "false"'
++			RETURN $TS_ERROR_CONFIG_INVALID
++		fi
+ 
+ 		if ! TS_DIFF_NOTICE=$(git config ts.diff.notice); then
+ 			echo 'Run "git config ts.diff.notice" to set the notice in the diff header'
+@@ -118,10 +148,17 @@ function in_environment() {
+ 			echo 'run "git config ts.diff.type" to set how the diff is created'
+ 			RETURN=$TS_ERROR_CONFIG_UNSET
+ 		elif [[ ${TS_DIFF_TYPE} != "staged" && ${TS_DIFF_TYPE} != "full" ]]; then
+-			echo 'ERROR: ts.diff.type must be wither "staged" or "full"'
++			echo 'ERROR: ts.diff.type must be either "staged" or "full"'
+ 			RETURN $TS_ERROR_CONFIG_INVALID
+ 		fi
+ 
++		if ! TS_SERVER_UPDATE=$(git config ts.server.update); then
++			echo 'Run "git config ts.server.update" to set whether existing timestamps should be updated on TSA config changes'
++			RETURN=$TS_ERROR_CONFIG_UNSET
++		elif [[ ${TS_SERVER_UPDATE} != "true" && ${TS_SERVER_UPDATE} != "false" ]]; then
++			echo 'ERROR: ts.server.update must be either "true" or "false"'
++			RETURN $TS_ERROR_CONFIG_INVALID
++		fi
+ 		if ! TS_SERVER_DIRECTORY=$(git config ts.server.directory); then
+ 			echo 'Run "git config ts.server.directory" to set the directory name of the the timestamping.sh server configs'
+ 			RETURN=$TS_ERROR_CONFIG_UNSET
+@@ -156,15 +193,7 @@ function in_environment() {
+ 			echo 'Run "git config ts.response.verify" to set whether the timestamp response file is verified after'
+ 			RETURN=$TS_ERROR_CONFIG_UNSET
+ 		elif [[ ${TS_RESPONSE_VERIFY} != "true" && ${TS_RESPONSE_VERIFY} != "false" ]]; then
+-			echo 'ERROR: ts.response.verify must be wither "true" or "false"'
+-			RETURN $TS_ERROR_CONFIG_INVALID
+-		fi
+-
+-		if ! TS_PUSH_WITHHOLD=$(git config ts.push.withhold); then
+-			echo 'Run "git config ts.push.withhold" to set whether timestamp commits should be withheld from remotes'
+-			RETURN=$TS_ERROR_CONFIG_UNSET
+-		elif [[ ${TS_PUSH_WITHHOLD} != "true" && ${TS_PUSH_WITHHOLD} != "false" ]]; then
+-			echo 'ERROR: ts.push.withhold must be wither "true" or "false"'
++			echo 'ERROR: ts.response.verify must be either "true" or "false"'
+ 			RETURN $TS_ERROR_CONFIG_INVALID
+ 		fi
+ 
+@@ -422,6 +451,10 @@ function create_timestamps() {
+ }
+ 
+ function update_timestamps() {
++	if [[ ${TS_SERVER_UPDATE} != "true" ]]; then
++		return 0
++	fi
++
+ 	local COMMIT_ID=$1
+ 	local BRANCH=$2
+ 
+@@ -498,7 +531,7 @@ function maybe_stash() {
+ 
+ # Unstashes uncommitted changes, if any
+ # Arguments:
+-# 	$1 1, if changes should be unstashed, 0 otherwise
++# 	$1: 1, if changes should be unstashed, 0 otherwise
+ function maybe_unstash() {
+ 	if [[ $1 == 0 ]]; then
+ 		hook_echo "Unstashing changes"
+@@ -568,9 +601,8 @@ function on_signing_branch() {
+ # 	$1: Name of the branch
+ function checkout_actual() {
+ 	local BRANCH=$1
+-	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
++	if git checkout "${BRANCH}" >/dev/null 2>/dev/null; then
+ 		hook_echo "Checking out ${BRANCH}"
+-		git checkout "${BRANCH}" >/dev/null 2>/dev/null
+ 	else
+ 		hook_echo "Checking out orphaned ${BRANCH}"
+ 		git checkout --orphan "${BRANCH}" >/dev/null 2>/dev/null
+@@ -587,21 +619,26 @@ function checkout_actual() {
+ function checkout_signing() {
+ 	local SIGNING_BRANCH
+ 	SIGNING_BRANCH=$(get_signing_branch "$1")
+-	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
+-		git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null && hook_echo "Checking out ${SIGNING_BRANCH}"
+-		return $?
+-	else
++	if git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
++		hook_echo "Checking out ${SIGNING_BRANCH}"
++		case "${TS_SERVER_REMOTE}" in
++		"default") git pull --atomic || return $TS_ERROR_PULL ;;
++		"merge") git pull --atomic --rebase=false || return $TS_ERROR_PULL ;;
++		"rebase") git pull --atomic --rebase=merges || return $TS_ERROR_PULL ;;
++		"keep") ;;
++		esac
+ 
+-		if git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null; then
+-			hook_echo "Checking out ${TS_BRANCH_PREFIX}-"
+-			git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null && hook_echo "Checking out new ${SIGNING_BRANCH}"
+-		fi
++		return 0
++	elif git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null; then
++		hook_echo "Checking out ${TS_BRANCH_PREFIX}-"
++		git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null && hook_echo "Checking out new ${SIGNING_BRANCH}"
++		return $?
+ 	fi
+ }
+ 
+ # Checks whether an object only exists on signing branches
+ # Arguments:
+-# 	$1 OID of the object in question
++# 	$1: OID of the object in question
+ #
+ # Returns:
+ # 	0: Object is signing branch only
+@@ -775,31 +812,43 @@ function write_tsa_diff() {
+ # Adds the timestamping files to the staging area
+ function add_ts_files() {
+ 	git add --force -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"*
++	return $?
+ }
+ 
+ # Commits the timestamping files in the staging area
+ function commit_ts_files() {
+ 	local COMMIT_MSG=$1
+-	git commit --message "${COMMIT_MSG}" -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
++
++	git commit --message "${COMMIT_MSG}" "${TS_COMMIT_OPTIONS[@]}" -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
++	return $?
+ }
+ 
+ # Amends the timestamping files in the staging area to the last commit
+ function amend_ts_files() {
+ 	local COMMIT_MSG=$1
++
+ 	git commit --amend --message "${COMMIT_MSG}" -- "${TS_SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
++	return $?
+ }
+ 
+ # Merges changes from the root signing branch into the current signing branch
+ function merge_branches() {
+ 	local COMMIT_ID=$1
++
+ 	git merge --strategy=recursive --strategy-option=theirs "${COMMIT_ID}" >/dev/null 2>/dev/null
++	return $?
+ }
+ 
+ # Relates a commit to the last timestamping commit
+ function relate_branches() {
++	if [[ ${TS_COMMIT_RELATE} != "true" ]]; then
++		return 0
++	fi
++
+ 	local COMMIT_MSG=$1
+ 	local COMMIT_ID=$2
+ 	git merge --allow-unrelated-histories --strategy ours --message "${COMMIT_MSG}" "${COMMIT_ID}" >/dev/null 2>/dev/null
++	return $?
+ }
+ # endregion
+ 
 
