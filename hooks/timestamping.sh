@@ -27,15 +27,16 @@
 # Error codes
 TS_ERROR_CALL=128
 
-TS_ERROR_NO_CONFIG_DIR=10
+TS_ERROR_NO_CONFIG_DIR=11
 
-TS_ERROR_WITHHOLD=9
+TS_ERROR_WITHHOLD=10
 
-TS_ERROR_REQUEST=8
-TS_ERROR_RESPONSE=7
-TS_ERROR_VERIFY_REQUEST=6
-TS_ERROR_VERIFY_DATA=5
+TS_ERROR_REQUEST=9
+TS_ERROR_RESPONSE=8
+TS_ERROR_VERIFY_REQUEST=7
+TS_ERROR_VERIFY_DATA=6
 
+TS_ERROR_PULL=5
 TS_ERROR_ROOT_BRANCH=4
 
 TS_ERROR_CONFIG_INVALID=3
@@ -77,12 +78,18 @@ function in_environment() {
 	local RETURN=$TS_OK
 
 	local TS_BRANCH_PREFIX
+	local TS_BRANCH_REMOTE
+	local TS_BRANCH_WITHHOLD
+
 	local TS_COMMIT_PREFIX
+	local TS_COMMIT_OPTIONS=()
+	local TS_COMMIT_RELATE
 
 	local TS_DIFF_NOTICE
 	local TS_DIFF_FILE
 	local TS_DIFF_TYPE
 
+	local TS_SERVER_UPDATE
 	local TS_SERVER_DIRECTORY
 	local TS_SERVER_URL
 	local TS_SERVER_CERTIFICATE
@@ -94,16 +101,39 @@ function in_environment() {
 	local TS_RESPONSE_OPTIONS=()
 	local TS_RESPONSE_VERIFY
 
-	local TS_PUSH_WITHHOLD
-
 	if [[ -z ${TS_ENVIRONMENT_SET+x} ]]; then
 		if ! TS_BRANCH_PREFIX=$(git config ts.branch.prefix); then
 			echo 'Run "git config ts.branch.prefix" to set the signing branch prefix'
 			RETURN=$TS_ERROR_CONFIG_UNSET
 		fi
+		if ! TS_BRANCH_REMOTE=$(git config ts.branch.remote); then
+			echo 'Run "git config ts.branch.remote" to set the how remote and local signing branch are managed'
+			RETURN=$TS_ERROR_CONFIG_UNSET
+		elif [[ ${TS_BRANCH_REMOTE} != "default" && ${TS_BRANCH_REMOTE} != "merge" && ${TS_BRANCH_REMOTE} != "rebase" && ${TS_BRANCH_REMOTE} != "keep" ]]; then
+			echo 'ERROR: ts.branch.remote must be either "merge" or "rebase" or "keep"'
+		fi
+		if ! TS_BRANCH_WITHHOLD=$(git config ts.branch.withhold); then
+			echo 'Run "git config ts.branch.withhold" to set whether timestamp commits should be withheld from remotes'
+			RETURN=$TS_ERROR_CONFIG_UNSET
+		elif [[ ${TS_BRANCH_WITHHOLD} != "true" && ${TS_BRANCH_WITHHOLD} != "false" ]]; then
+			echo 'ERROR: ts.branch.withhold must be either "true" or "false"'
+			RETURN $TS_ERROR_CONFIG_INVALID
+		fi
+
 		if ! TS_COMMIT_PREFIX=$(git config ts.commit.prefix); then
 			echo 'Run "git config ts.commit.prefix" to set the signing commit message prefix'
 			RETURN=$TS_ERROR_CONFIG_UNSET
+		fi
+		if ! mapfile -d " " -t TS_COMMIT_OPTIONS < <(git config ts.commit.options | tr -d '\n'); then
+			echo 'Run "git config ts.commit.options" to set the signing commit options'
+			RETURN=$TS_ERROR_CONFIG_UNSET
+		fi
+		if ! TS_COMMIT_RELATE=$(git config ts.commit.relate); then
+			echo 'Run "git config ts.commit.relate" to set whether timestamp and actual commits should be merged afterwards'
+			RETURN=$TS_ERROR_CONFIG_UNSET
+		elif [[ ${TS_COMMIT_RELATE} != "true" && ${TS_COMMIT_RELATE} != "false" ]]; then
+			echo 'ERROR: ts.commit.relate must be either "true" or "false"'
+			RETURN $TS_ERROR_CONFIG_INVALID
 		fi
 
 		if ! TS_DIFF_NOTICE=$(git config ts.diff.notice); then
@@ -118,10 +148,17 @@ function in_environment() {
 			echo 'run "git config ts.diff.type" to set how the diff is created'
 			RETURN=$TS_ERROR_CONFIG_UNSET
 		elif [[ ${TS_DIFF_TYPE} != "staged" && ${TS_DIFF_TYPE} != "full" ]]; then
-			echo 'ERROR: ts.diff.type must be wither "staged" or "full"'
+			echo 'ERROR: ts.diff.type must be either "staged" or "full"'
 			RETURN $TS_ERROR_CONFIG_INVALID
 		fi
 
+		if ! TS_SERVER_UPDATE=$(git config ts.server.update); then
+			echo 'Run "git config ts.server.update" to set whether existing timestamps should be updated on TSA config changes'
+			RETURN=$TS_ERROR_CONFIG_UNSET
+		elif [[ ${TS_SERVER_UPDATE} != "true" && ${TS_SERVER_UPDATE} != "false" ]]; then
+			echo 'ERROR: ts.server.update must be either "true" or "false"'
+			RETURN $TS_ERROR_CONFIG_INVALID
+		fi
 		if ! TS_SERVER_DIRECTORY=$(git config ts.server.directory); then
 			echo 'Run "git config ts.server.directory" to set the directory name of the the timestamping.sh server configs'
 			RETURN=$TS_ERROR_CONFIG_UNSET
@@ -156,15 +193,7 @@ function in_environment() {
 			echo 'Run "git config ts.response.verify" to set whether the timestamp response file is verified after'
 			RETURN=$TS_ERROR_CONFIG_UNSET
 		elif [[ ${TS_RESPONSE_VERIFY} != "true" && ${TS_RESPONSE_VERIFY} != "false" ]]; then
-			echo 'ERROR: ts.response.verify must be wither "true" or "false"'
-			RETURN $TS_ERROR_CONFIG_INVALID
-		fi
-
-		if ! TS_PUSH_WITHHOLD=$(git config ts.push.withhold); then
-			echo 'Run "git config ts.push.withhold" to set whether timestamp commits should be withheld from remotes'
-			RETURN=$TS_ERROR_CONFIG_UNSET
-		elif [[ ${TS_PUSH_WITHHOLD} != "true" && ${TS_PUSH_WITHHOLD} != "false" ]]; then
-			echo 'ERROR: ts.push.withhold must be wither "true" or "false"'
+			echo 'ERROR: ts.response.verify must be either "true" or "false"'
 			RETURN $TS_ERROR_CONFIG_INVALID
 		fi
 
@@ -422,6 +451,10 @@ function create_timestamps() {
 }
 
 function update_timestamps() {
+	if [[ ${TS_SERVER_UPDATE} != "true" ]]; then
+		return 0
+	fi
+
 	local COMMIT_ID=$1
 	local BRANCH=$2
 
@@ -498,7 +531,7 @@ function maybe_stash() {
 
 # Unstashes uncommitted changes, if any
 # Arguments:
-# 	$1 1, if changes should be unstashed, 0 otherwise
+# 	$1: 1, if changes should be unstashed, 0 otherwise
 function maybe_unstash() {
 	if [[ $1 == 0 ]]; then
 		hook_echo "Unstashing changes"
@@ -568,9 +601,8 @@ function on_signing_branch() {
 # 	$1: Name of the branch
 function checkout_actual() {
 	local BRANCH=$1
-	if git rev-parse --verify "${BRANCH}" >/dev/null 2>/dev/null; then
+	if git checkout "${BRANCH}" >/dev/null 2>/dev/null; then
 		hook_echo "Checking out ${BRANCH}"
-		git checkout "${BRANCH}" >/dev/null 2>/dev/null
 	else
 		hook_echo "Checking out orphaned ${BRANCH}"
 		git checkout --orphan "${BRANCH}" >/dev/null 2>/dev/null
@@ -587,21 +619,26 @@ function checkout_actual() {
 function checkout_signing() {
 	local SIGNING_BRANCH
 	SIGNING_BRANCH=$(get_signing_branch "$1")
-	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
-		git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null && hook_echo "Checking out ${SIGNING_BRANCH}"
-		return $?
-	else
+	if git checkout "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
+		hook_echo "Checking out ${SIGNING_BRANCH}"
+		case "${TS_SERVER_REMOTE}" in
+		"default") git pull --atomic || return $TS_ERROR_PULL ;;
+		"merge") git pull --atomic --rebase=false || return $TS_ERROR_PULL ;;
+		"rebase") git pull --atomic --rebase=merges || return $TS_ERROR_PULL ;;
+		"keep") ;;
+		esac
 
-		if git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null; then
-			hook_echo "Checking out ${TS_BRANCH_PREFIX}-"
-			git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null && hook_echo "Checking out new ${SIGNING_BRANCH}"
-		fi
+		return 0
+	elif git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null; then
+		hook_echo "Checking out ${TS_BRANCH_PREFIX}-"
+		git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null && hook_echo "Checking out new ${SIGNING_BRANCH}"
+		return $?
 	fi
 }
 
 # Checks whether an object only exists on signing branches
 # Arguments:
-# 	$1 OID of the object in question
+# 	$1: OID of the object in question
 #
 # Returns:
 # 	0: Object is signing branch only
@@ -775,31 +812,43 @@ function write_tsa_diff() {
 # Adds the timestamping files to the staging area
 function add_ts_files() {
 	git add --force -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"*
+	return $?
 }
 
 # Commits the timestamping files in the staging area
 function commit_ts_files() {
 	local COMMIT_MSG=$1
-	git commit --message "${COMMIT_MSG}" -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
+
+	git commit --message "${COMMIT_MSG}" "${TS_COMMIT_OPTIONS[@]}" -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
+	return $?
 }
 
 # Amends the timestamping files in the staging area to the last commit
 function amend_ts_files() {
 	local COMMIT_MSG=$1
+
 	git commit --amend --message "${COMMIT_MSG}" -- "${TS_SERVER_DIRECTORY}/"* >/dev/null 2>/dev/null
+	return $?
 }
 
 # Merges changes from the root signing branch into the current signing branch
 function merge_branches() {
 	local COMMIT_ID=$1
+
 	git merge --strategy=recursive --strategy-option=theirs "${COMMIT_ID}" >/dev/null 2>/dev/null
+	return $?
 }
 
 # Relates a commit to the last timestamping commit
 function relate_branches() {
+	if [[ ${TS_COMMIT_RELATE} != "true" ]]; then
+		return 0
+	fi
+
 	local COMMIT_MSG=$1
 	local COMMIT_ID=$2
 	git merge --allow-unrelated-histories --strategy ours --message "${COMMIT_MSG}" "${COMMIT_ID}" >/dev/null 2>/dev/null
+	return $?
 }
 # endregion
 

@@ -121,19 +121,19 @@ git checkout "sig/single"
 
 to check out the timestamps created for commits on branch `single`.
 
-To find the timestamp of a specific commit, refer to this diagram:
+To find the timestamp of a specific commit, refer to this commit history graph:
 
-```
-┊ ┊
-o │ <- Merged timestamp/actual commit
-│╲│
-│ o <- Actual commit
-│ │
-o │ <- Timestamp commit
-│ ┊
-┊ ┴ <- Actual branch
-┴   <- Signing branch
-```
+<pre>
+<code><span style="color:purple">┊</span> <span style="color:darkblue">┊</span>
+o <span style="color:darkblue">│</span> <- Merged timestamp/actual commit
+<span style="color:purple">│</span><span style="color:darkblue">╲│</span>
+<span style="color:purple">│</span> o <- Actual commit
+<span style="color:purple">│</span> <span style="color:green">│</span>
+o <span style="color:green">│</span> <- Timestamp commit
+<span style="color:purple">│</span> <span style="color:green">┊</span>
+<span style="color:purple">┊</span> <span style="color:green">┴</span> <- Actual branch
+<span style="color:purple">┴</span>   <- Signing branch</code>
+</pre>
 
 As the timestamps are created before the actual commits, they can not refer to the actual commit. Therefore, the actual
 commit is merged into the signing branch afterwards, so that both the timestamp and actual commit are previous commits
@@ -222,9 +222,30 @@ a repository where this software is installed to, do the following steps:
 ### Customising a TSA configuration
 
 By placing additional files inside a TSA configuration's directory, you can further customize how timestamps from that
-TSA are generated:
+TSA are generated. Here is a fully customized TSA configuration directory:
 
-#### Timestamp server URL
+<pre>
+<code>./
+└ rfc3161/
+  └ freeTSA/
+    ├ .diff
+    ├ cacert.pem
+    ├ <a href="#tsa_certificate_bundle">cacert.sh</a>
+    ├ <a href="#diffs">diff.sh</a>
+    ├ <a href="#timestamp_requests">request.sh</a>
+    ├ request.tsq
+    ├ <a href="#timestamp_responses">response.sh</a>
+    ├ response.tsr
+    └ <a href="#tsa_server_url">url</a>
+...</code>
+</pre>
+
+The following customizations are recognized:
+
+<ul>
+<li>
+
+#### <span id="tsa_server_url">TSA server URL</span>
 
 **File:** `url`
 
@@ -238,14 +259,17 @@ Use this to specify a protocol and resource on the server domain.
 ```
 https://freetsa.org/tsr
 ```
+</li>
+<li>
 
-#### TSA certificate chains
+
+#### <span id="tsa_certificate_bundle">TSA certificate bundle</span>
 
 **File:** <code>cacert</code><code>.sh</code>
 
 **Description:**
 If existent, is called when before verifying the timestamp before the actual commit, and it's output is piped into the
-certificate file of the TSA.<br/>
+certificate bundle file of the TSA.<br/>
 Use this to ensure the timestamps are verified against the current certificate.
 
 **Example:**
@@ -254,15 +278,17 @@ Use this to ensure the timestamps are verified against the current certificate.
 ```shell
 curl --silent https://freetsa.org/files/cacert.pem
 ```
+</li>
+<li>
 
-#### Diffs
+#### <span id="diffs">Diffs</span>
 
 **File:** <code>diff</code><code>.sh</code>
 
 **Description:**
 If existent, is called when creating the diff before the actual commit, and it's output is used as a diff to timestamp
 from that TSA only. The so generated diff file will not be modified further.<br/>
-Working directory is the repositories root directory.
+Working directory is the repository's root directory.
 
 **Example:**
 `./rfc3161/freetsa/diff.sh`
@@ -270,8 +296,10 @@ Working directory is the repositories root directory.
 ```shell
 git diff --staged --full-index --binary
 ```
+</li>
+<li>
 
-#### Timestamp requests
+#### <span id="timestamp_requests">Timestamp requests</span>
 
 **File:** <code>request</code><code>.sh</code>
 
@@ -285,8 +313,10 @@ The diff file will be supplied via <i>stdin</i> and the contents of the request 
 ```shell
 openssl ts -query -cert -sha512 <&0
 ```
+</li>
+<li>
 
-#### Timestamp responses
+#### <span id="timestamp_responses">Timestamp responses</span>
 
 **File:** <code>response</code><code>.sh</code>
 
@@ -300,6 +330,8 @@ The request will be supplied via <i>stdin</i> and the contents of the response f
 ```shell
 curl --silent --header 'Content-Type: application/timestamp-query' --data-binary @- https://freetsa.org/tsr <&0
 ```
+</li>
+</ul>
 
 ### Updating a TSA configuration
 
@@ -331,20 +363,23 @@ git config <option> "<value>"
 |Git config option|Description|Default value|
 |---|---|---|
 |`ts.branch.prefix`|The prefix used for branches created through and used by the automated timestamping.<br/>Will be appended with `-` for root branch and with `/<branch-name>` for each branch committed to.|`"sig"`|
+|`ts.branch.pull`|How remote and local signing branches should me managed.<br/>May either be:<ul><li>`"default"`: As configured through `pull.rebase`</li><li>`"merge"`: Merge remote signing branches into local before timestamping or</li><li>`"rebase"`: Rebase remote signing branches into local before timestamping or</li><li>`"keep"`: Don't update local signing branches from remote.</li></ul>|`"merge"`|
+|`ts.branch.withhold`|Whether the contents of timestamping branches should be withheld from remotes.<br/>If `true`, [git-push](https://git-scm.com/docs/git-push) will fail for timestamping branches.|`"false"`|
 |`ts.commit.prefix`|The prefix used for messages for commits containing timestamps.<br/>Will be appended with the commit message of the actual commit.|`"Timestamp for: "`|
 |`ts.commit.options`|Options to apply to the `git commit` command for committing timestamps.|`""`|
-|`ts.diff.notice`|Text added to the start of the timestamped diff files.|`"Written by $(git config --get user.name)"`|
-|`ts.diff.file`|Name of the generated diff file|`".diff"`|
-|`ts.diff.type`|Type of diff to be created.<br/>May either be:<br/>`"staged"` for diffs to HEAD, or <br/>`"full"` for diffs to the empty tree object.|`"staged"`|
-|`ts.server.directory`|The directory containing the timestamp server configurations relative to the repositories root directory.|`"rfc3161"`|
+|`ts.commit.relate`|Whether timestamp commits should be related via merge commits.<br/>May be `true` or `false`.|`"true"`|
+|`ts.diff.notice`|Text added to the start of the timestamped diff files.|<code>"Written by <i>$(git config --get user.name)</i>"</code>|
+|`ts.diff.file`|Name of the generated diff file.|`".diff"`|
+|`ts.diff.type`|Type of diff to be created.<br/>May either be:<br/><ul><li>`"staged"` for diffs to HEAD, or</li><li>`"full"` for diffs to the empty tree object.</li></ul>|`"staged"`|
+|`ts.server.directory`|The directory containing the timestamp server configurations relative to the repository's root directory.|`"rfc3161"`|
 |`ts.server.url`|Name of the file containing the url of the timestamp server.|`"url"`|
 |`ts.server.certificate`|Name of the certificate bundle file for a single timestamp server.|`"cacert.pem"`|
+|`ts.server.update`|Whether timestamps should be updated on TSA configuration changes.<br/>May be `true` or `false`.|`"true"`|
 |`ts.request.file`|Name of the generated timestamp request file.|`"request.tsq"`|
 |`ts.request.options`|Options for creating the timestamp request file through `openssl ts -query`.|`"-cert -sha256 -no_nonce"`|
 |`ts.response.file`|Name of the received timestamp response file.|`"response.tsr"`|
 |`ts.response.options`|Options for requesting the timestamp from the server through `curl`.|`""`|
 |`ts.response.verify`|Whether the received timestamp should be verified against the diff and request file.<br/>May be `true` or `false`.|`"true"`|
-|`ts.push.withhold`|Whether timestamping commits should be withheld from remotes.<br/>If `true`, [git-push](https://git-scm.com/docs/git-push) will fail for timestamping branches.|`"false"`|
 |`ts.enabled`|Whether automated timestamping should be triggered on commits.<br/>May be `true` or `false`.|`"true"`|
 
 > ⚠ Warning: Set the paths and filenames so that they don't interfere with what you plan to commit.

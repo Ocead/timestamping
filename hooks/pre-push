@@ -33,7 +33,7 @@ function ts-pre-push_impl() {
 		die 'Call this script only through "git push".'
 	fi
 
-	if [[ ${TS_PUSH_WITHHOLD} != "true" ]]; then
+	if [[ ${TS_BRANCH_WITHHOLD} != "true" ]]; then
 		return 0
 	fi
 
