@@ -358,12 +358,6 @@ function create_timestamp() {
 		return $TS_ERROR_NO_CONFIG_DIR
 	fi
 
-	if [[ -f "${SERVER_DIRECTORY}/${TS_DIFF_FILE}" ]]; then
-		local DIFF
-
-		DATA_FILE="${SERVER_DIRECTORY}/${TS_DIFF_FILE}"
-	fi
-
 	if [[ -f "${SERVER_DIRECTORY}/cacert.sh" ]]; then
 		hook_echo "Downloading certificate for ${SERVER_DIR}"
 		"${SERVER_DIRECTORY}/cacert.sh" >"${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}"
@@ -421,7 +415,13 @@ function create_timestamps() {
 
 	# Loop for each timestamping server
 	for d in "${TS_SERVER_DIRECTORY}/"*/; do
-		create_timestamp "${BRANCH}" "${TS_DIFF_FILE}" "${d}"
+		local DATA_FILE
+		if [[ -f "${d}/${TS_DIFF_FILE}" ]]; then
+			DATA_FILE=$(canonize "${d}/${TS_DIFF_FILE}")
+		else
+			DATA_FILE="${TS_DIFF_FILE}"
+		fi
+		create_timestamp "${BRANCH}" "${DATA_FILE}" "${d}"
 		RETURN=$?
 		case ${RETURN} in
 		0) SIG_COUNT=$((SIG_COUNT + 1)) ;;
@@ -465,7 +465,7 @@ function update_timestamps() {
 	mapfile -t REVS < <(git branch --contains "$(git rev-list --max-parents=0 HEAD)" 2>/dev/null | tr -d " *")
 
 	for i in "${!REVS[@]}"; do
-		if [[ "${REVS[$i]}" == "${TS_BRANCH_PREFIX}/"* ]]; then
+		if [[ "${REVS[$i]}" == "${TS_BRANCH_PREFIX}/b/"* ]]; then
 			BRANCHES+=("${REVS[$i]}")
 		fi
 	done
@@ -564,8 +564,8 @@ function get_branch() {
 function get_signing_branch() {
 	local BRANCH=$1
 
-	if [[ ! ${BRANCH} == "${TS_BRANCH_PREFIX}/"* && ! ${BRANCH} == "${TS_BRANCH_PREFIX}-" ]]; then
-		echo "${TS_BRANCH_PREFIX}/${BRANCH}"
+	if [[ ! ${BRANCH} == "${TS_BRANCH_PREFIX}/b/"* && ! ${BRANCH} == "${TS_BRANCH_PREFIX}/root" ]]; then
+		echo "${TS_BRANCH_PREFIX}/b/${BRANCH}"
 	else
 		echo "${BRANCH}"
 	fi
@@ -579,11 +579,11 @@ function get_signing_branch() {
 # 	&1: The name of the signing branch
 function get_actual_signing_branch() {
 	local BRANCH=$1
-	local SIGNING_BRANCH="${TS_BRANCH_PREFIX}/$1"
+	local SIGNING_BRANCH="${TS_BRANCH_PREFIX}/b/$1"
 	if git rev-parse --verify "${SIGNING_BRANCH}" >/dev/null 2>/dev/null; then
 		echo "${SIGNING_BRANCH}"
 	else
-		echo "${TS_BRANCH_PREFIX}-"
+		echo "${TS_BRANCH_PREFIX}/root"
 	fi
 }
 
@@ -592,7 +592,7 @@ function get_actual_signing_branch() {
 # 	0: On signing branch
 # 	1: Not on signing branch
 function on_signing_branch() {
-	[[ ${BRANCH} == ${TS_BRANCH_PREFIX}/* || ${BRANCH} == "${TS_BRANCH_PREFIX}-" ]]
+	[[ ${BRANCH} == ${TS_BRANCH_PREFIX}/b/* || ${BRANCH} == "${TS_BRANCH_PREFIX}/root" ]]
 	return $?
 }
 
@@ -629,8 +629,8 @@ function checkout_signing() {
 		esac
 
 		return 0
-	elif git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null; then
-		hook_echo "Checking out ${TS_BRANCH_PREFIX}-"
+	elif git checkout "${TS_BRANCH_PREFIX}/root" >/dev/null 2>/dev/null; then
+		hook_echo "Checking out ${TS_BRANCH_PREFIX}/root"
 		git checkout -b "${SIGNING_BRANCH}" >/dev/null 2>/dev/null && hook_echo "Checking out new ${SIGNING_BRANCH}"
 		return $?
 	fi
@@ -651,7 +651,7 @@ function is_signing_only_object() {
 	local TS_BRANCHES=()
 	mapfile -t BRANCHES < <(git branch --contains "${OID}" | tr -d " *")
 	for b in "${BRANCHES[@]}"; do
-		if [[ ${b} != "${TS_BRANCH_PREFIX}-" && ${b} != "${TS_BRANCH_PREFIX}/"* ]]; then
+		if [[ ${b} != "${TS_BRANCH_PREFIX}/root" && ${b} != "${TS_BRANCH_PREFIX}/b/"* ]]; then
 			ACTUAL=$((ACTUAL + 1))
 		else
 			TS_BRANCHES+=("${b}")

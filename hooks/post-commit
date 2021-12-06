@@ -64,9 +64,9 @@ function ts-post-commit_impl() {
 	local BRANCH
 	BRANCH=$(get_branch)
 
-	if [[ ${BRANCH} == "${TS_BRANCH_PREFIX}/"* ]]; then
+	if [[ ${BRANCH} == "${TS_BRANCH_PREFIX}/b/"* ]]; then
 		return 0
-	elif [[ "${BRANCH}" == "${TS_BRANCH_PREFIX}-" ]]; then
+	elif [[ "${BRANCH}" == "${TS_BRANCH_PREFIX}/root" ]]; then
 		COMMIT_ID=$(git rev-parse HEAD)
 		update_timestamps "${COMMIT_ID}" "${BRANCH}"
 	elif [[ -f "${GIT_DIR}/TIMESTAMP" ]]; then

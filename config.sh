@@ -171,7 +171,7 @@ function maybe_remove() {
 function configure_repo() {
 	local TS_BRANCH_PREFIX
 	TS_BRANCH_PREFIX=$(git config --get ts.branch.prefix)
-	if git rev-parse --verify "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null; then
+	if git rev-parse --verify "${TS_BRANCH_PREFIX}/root" >/dev/null 2>/dev/null; then
 		script_echo "Root signing branch already present"
 		return 0
 	fi
@@ -194,8 +194,8 @@ function configure_repo() {
 
 	# Checkout root signing branch
 	script_echo "Checking out root signing branch"
-	if ! git checkout "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null; then
-		git checkout --orphan "${TS_BRANCH_PREFIX}-" >/dev/null 2>/dev/null
+	if ! git checkout "${TS_BRANCH_PREFIX}/root" >/dev/null 2>/dev/null; then
+		git checkout --orphan "${TS_BRANCH_PREFIX}/root" >/dev/null 2>/dev/null
 
 		# Create initial commit in root signing branch
 		script_echo "Creating TSA config directory"
@@ -321,7 +321,7 @@ function uninstall_timestamping() {
 			mapfile -t BRANCHES < <(git branch --list | tr -d ' *')
 
 			for b in "${BRANCHES[@]}"; do
-				if [[ ${b} == "${TS_BRANCH_PREFIX}-" || ${b} == "${TS_BRANCH_PREFIX}/"* ]]; then
+				if [[ ${b} == "${TS_BRANCH_PREFIX}/root" || ${b} == "${TS_BRANCH_PREFIX}/b/"* ]]; then
 					script_echo "Removing branch ${b}"
 					git branch -D "${b}"
 				fi

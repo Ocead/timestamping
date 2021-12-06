@@ -8,7 +8,7 @@ function echo_error() {
 
 # Adds a TSA configuration to the repository
 function add_tsa() {
-	git checkout "sig-"
+	git checkout "sig/root"
 	mkdir "./rfc3161/zeitstempel.dfn.de"
 	curl "https://pki.pca.dfn.de/dfn-ca-global-g2/pub/cacert/chain.txt" >"./rfc3161/zeitstempel.dfn.de/cacert.pem"
 	git add "./rfc3161/zeitstempel.dfn.de/cacert.pem"
@@ -25,7 +25,7 @@ function add_tsa() {
 
 # Adds a TSA configuration with custom URL to the repository
 function add_custom_url_tsa() {
-	git checkout "sig-"
+	git checkout "sig/root"
 	mkdir "./rfc3161/freetsa"
 	curl "https://freetsa.org/files/cacert.pem" >"./rfc3161/freetsa/cacert.pem"
 	echo "https://freetsa.org/tsr" >"./rfc3161/freetsa/url"
@@ -43,7 +43,7 @@ function add_custom_url_tsa() {
 
 # Adds a TSA configuration with custom diff to the repository
 function add_custom_diff_tsa() {
-	git checkout "sig-"
+	git checkout "sig/root"
 	mkdir "./rfc3161/timestamp.digicert.com"
 	curl "https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem" >"./rfc3161/timestamp.digicert.com/cacert.pem"
 	echo "echo 'Gnampf'" >"./rfc3161/timestamp.digicert.com/diff.sh"
@@ -61,7 +61,7 @@ function add_custom_diff_tsa() {
 
 # Adds a TSA configuration with custom certificate to the repository
 function add_custom_cacert_tsa() {
-	git checkout "sig-"
+	git checkout "sig/root"
 	mkdir "./rfc3161/timestamp.digicert.com"
 	echo 'curl "https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem"' >"./rfc3161/timestamp.digicert.com/cacert.sh"
 	git add "./rfc3161/timestamp.digicert.com/cacert.sh"
@@ -78,7 +78,7 @@ function add_custom_cacert_tsa() {
 
 # Adds a TSA configuration with custom request to the repository
 function add_custom_request_tsa() {
-	git checkout "sig-"
+	git checkout "sig/root"
 	mkdir "./rfc3161/timestamp.digicert.com"
 	curl "https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem" >"./rfc3161/timestamp.digicert.com/cacert.pem"
 	echo "openssl ts -query -cert -sha512 <&0" >"./rfc3161/timestamp.digicert.com/request.sh"
@@ -96,7 +96,7 @@ function add_custom_request_tsa() {
 
 # Adds a TSA configuration with custom response to the repository
 function add_custom_response_tsa() {
-	git checkout "sig-"
+	git checkout "sig/root"
 	mkdir "./rfc3161/freetsa"
 	curl "https://freetsa.org/files/cacert.pem" >"./rfc3161/freetsa/cacert.pem"
 	echo "curl --silent --header 'Content-Type: application/timestamp-query' --data-binary '@-' 'https://freetsa.org/tsr' <&0" >"./rfc3161/freetsa/response.sh"
@@ -125,8 +125,8 @@ function verify_first() {
 	test -f a.txt || echo_error "1: a.txt should exist."
 	! test -f .gitattributes || echo_error "1: .gitattributes should not exist."
 
-	if git rev-parse --verify "sig/master" >/dev/null 2>/dev/null; then
-		git checkout "sig/master" >/dev/null 2>/dev/null
+	if git rev-parse --verify "sig/b/master" >/dev/null 2>/dev/null; then
+		git checkout "sig/b/master" >/dev/null 2>/dev/null
 		test -d rfc3161/ || echo_error 1: 1: "rfc3161/ should exist."
 		! test -f a.txt 2>/dev/null || echo_error "1: a.txt should not exist."
 		test -f .gitattributes || echo_error "1: .gitattributes should exist."
@@ -148,8 +148,8 @@ function verify_second() {
 	test -f b.txt || echo_error "2: b.txt should exist."
 	! test -f .gitattributes || echo_error "2: .gitattributes should not exist."
 
-	if git rev-parse --verify "sig/master" >/dev/null 2>/dev/null; then
-		git checkout "sig/master" >/dev/null 2>/dev/null
+	if git rev-parse --verify "sig/b/master" >/dev/null 2>/dev/null; then
+		git checkout "sig/b/master" >/dev/null 2>/dev/null
 		test -d rfc3161/ || echo_error "2: rfc3161/ should exist."
 		! test -f a.txt 2>/dev/null || echo_error "2: a.txt should not exist."
 		! test -f b.txt 2>/dev/null || echo_error "2: b.txt should not exist."
