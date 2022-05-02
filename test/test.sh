@@ -6,10 +6,15 @@ function echo_error() {
 	exit 254
 }
 
+function configure_repo() {
+  git config user.name "test"
+  git config user.email "text@test.net"
+}
+
 # Adds a TSA configuration to the repository
 function add_tsa() {
 	git checkout "sig/root"
-	mkdir "./rfc3161/zeitstempel.dfn.de"
+	mkdir -p "./rfc3161/zeitstempel.dfn.de"
 	curl "https://pki.pca.dfn.de/dfn-ca-global-g2/pub/cacert/chain.txt" >"./rfc3161/zeitstempel.dfn.de/cacert.pem"
 	git add "./rfc3161/zeitstempel.dfn.de/cacert.pem"
 	git commit -m "Added simple TSA" "./rfc3161/zeitstempel.dfn.de/cacert.pem"
@@ -26,7 +31,7 @@ function add_tsa() {
 # Adds a TSA configuration with custom URL to the repository
 function add_custom_url_tsa() {
 	git checkout "sig/root"
-	mkdir "./rfc3161/freetsa"
+	mkdir -p "./rfc3161/freetsa"
 	curl "https://freetsa.org/files/cacert.pem" >"./rfc3161/freetsa/cacert.pem"
 	echo "https://freetsa.org/tsr" >"./rfc3161/freetsa/url"
 	git add "./rfc3161/freetsa/cacert.pem" "./rfc3161/freetsa/url"
@@ -44,9 +49,10 @@ function add_custom_url_tsa() {
 # Adds a TSA configuration with custom diff to the repository
 function add_custom_diff_tsa() {
 	git checkout "sig/root"
-	mkdir "./rfc3161/timestamp.digicert.com"
+	mkdir -p "./rfc3161/timestamp.digicert.com"
 	curl "https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem" >"./rfc3161/timestamp.digicert.com/cacert.pem"
 	echo "echo 'Gnampf'" >"./rfc3161/timestamp.digicert.com/diff.sh"
+	chmod +x "./rfc3161/timestamp.digicert.com/diff.sh"
 	git add "./rfc3161/timestamp.digicert.com/cacert.pem" "./rfc3161/timestamp.digicert.com/diff.sh"
 	git commit -m "Added custom diff TSA" ./rfc3161/timestamp.digicert.com/*
 
@@ -62,8 +68,9 @@ function add_custom_diff_tsa() {
 # Adds a TSA configuration with custom certificate to the repository
 function add_custom_cacert_tsa() {
 	git checkout "sig/root"
-	mkdir "./rfc3161/timestamp.digicert.com"
+	mkdir -p "./rfc3161/timestamp.digicert.com"
 	echo 'curl "https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem"' >"./rfc3161/timestamp.digicert.com/cacert.sh"
+	chmod +x "./rfc3161/timestamp.digicert.com/cacert.sh"
 	git add "./rfc3161/timestamp.digicert.com/cacert.sh"
 	git commit -m "Added custom certificate TSA" ./rfc3161/timestamp.digicert.com/*
 
@@ -79,9 +86,10 @@ function add_custom_cacert_tsa() {
 # Adds a TSA configuration with custom request to the repository
 function add_custom_request_tsa() {
 	git checkout "sig/root"
-	mkdir "./rfc3161/timestamp.digicert.com"
+	mkdir -p "./rfc3161/timestamp.digicert.com"
 	curl "https://knowledge.digicert.com/content/dam/digicertknowledgebase/attachments/time-stamp/DigiCertAssuredIDRootCA_comb.crt.pem" >"./rfc3161/timestamp.digicert.com/cacert.pem"
 	echo "openssl ts -query -cert -sha512 <&0" >"./rfc3161/timestamp.digicert.com/request.sh"
+	chmod +x "./rfc3161/timestamp.digicert.com/request.sh"
 	git add "./rfc3161/timestamp.digicert.com/cacert.pem" "./rfc3161/timestamp.digicert.com/request.sh"
 	git commit -m "Added custom request TSA" ./rfc3161/timestamp.digicert.com/*
 
@@ -97,9 +105,10 @@ function add_custom_request_tsa() {
 # Adds a TSA configuration with custom response to the repository
 function add_custom_response_tsa() {
 	git checkout "sig/root"
-	mkdir "./rfc3161/freetsa"
+	mkdir -p "./rfc3161/freetsa"
 	curl "https://freetsa.org/files/cacert.pem" >"./rfc3161/freetsa/cacert.pem"
 	echo "curl --silent --header 'Content-Type: application/timestamp-query' --data-binary '@-' 'https://freetsa.org/tsr' <&0" >"./rfc3161/freetsa/response.sh"
+	chmod +x "./rfc3161/freetsa/response.sh"
 	git add "./rfc3161/freetsa/cacert.pem" "./rfc3161/freetsa/response.sh"
 	git commit -m "Added custom response TSA" ./rfc3161/freetsa/*
 
@@ -175,6 +184,8 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"repo-empty"* || ${TEST_NAME} == "re
 	mkdir -p "${REPO_PATH}"
 	git --git-dir="${REPO_PATH}/.git" init
 	(
+	  cd "${REPO_PATH}" || exit 255
+    configure_repo
 		echo ""
 	)
 	./config.sh -d "${REPO_PATH}"
@@ -206,6 +217,7 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"repo-unstaged"* || ${TEST_NAME} == 
 	git --git-dir="${REPO_PATH}/.git" init
 	(
 		cd "${REPO_PATH}" || exit 255
+    configure_repo
 		echo "Gnampf" >"./a.txt"
 	)
 	./config.sh --default "${REPO_PATH}"
@@ -236,6 +248,8 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"repo-uncommitted"* || ${TEST_NAME} 
 	git --git-dir="${REPO_PATH}/.git" init
 	(
 		cd "${REPO_PATH}" || exit 255
+		git config user.name "test"
+    git config user.email "text@test.net"
 		echo "Gnampf" >"./a.txt"
 		git add "./a.txt"
 	)
@@ -266,6 +280,8 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"repo-committed"* || ${TEST_NAME} ==
 	git --git-dir="${REPO_PATH}/.git" init
 	(
 		cd "${REPO_PATH}" || exit 255
+		git config user.name "test"
+    git config user.email "text@test.net"
 		echo "Gnampf" >"./a.txt"
 		git add "./a.txt"
 		git commit -m "Initial commit"
@@ -296,6 +312,8 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"repo-staged"* || ${TEST_NAME} == "r
 	git --git-dir="${REPO_PATH}/.git" init
 	(
 		cd "${REPO_PATH}" || exit 255
+		git config user.name "test"
+    git config user.email "text@test.net"
 		echo "Gnampf" >"./a.txt"
 		git add "./a.txt"
 		git commit -m "Initial commit"
@@ -329,6 +347,8 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"repo-no-tsa"* || ${TEST_NAME} == "r
 	git --git-dir="${REPO_PATH}/.git" init
 	(
 		cd "${REPO_PATH}" || exit 255
+		git config user.name "test"
+    git config user.email "text@test.net"
 		echo "Gnampf" >"./a.txt"
 		git add "./a.txt"
 		git commit -m "Initial commit"
@@ -356,6 +376,8 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-url"* || ${TEST_NAME} == "cu
 	mkdir -p "${REPO_PATH}"
 	git --git-dir="${REPO_PATH}/.git" init
 	(
+    cd "${REPO_PATH}" || exit 255
+    configure_repo
 		echo ""
 	)
 	./config.sh -d "${REPO_PATH}"
@@ -387,6 +409,8 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-diff"* || ${TEST_NAME} == "c
 	mkdir -p "${REPO_PATH}"
 	git --git-dir="${REPO_PATH}/.git" init
 	(
+    cd "${REPO_PATH}" || exit 255
+    configure_repo
 		echo ""
 	)
 	./config.sh -d "${REPO_PATH}"
@@ -418,6 +442,8 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-certificate"* || ${TEST_NAME
 	mkdir -p "${REPO_PATH}"
 	git --git-dir="${REPO_PATH}/.git" init
 	(
+	  cd "${REPO_PATH}" || exit 255
+    configure_repo
 		echo ""
 	)
 	./config.sh -d "${REPO_PATH}"
@@ -449,6 +475,8 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-request"* || ${TEST_NAME} ==
 	mkdir -p "${REPO_PATH}"
 	git --git-dir="${REPO_PATH}/.git" init
 	(
+	  cd "${REPO_PATH}" || exit 255
+    configure_repo
 		echo ""
 	)
 	./config.sh -d "${REPO_PATH}"
@@ -480,6 +508,8 @@ if [[ -z "${TEST_NAME}" || ${TEST_NAME} == *"custom-response"* || ${TEST_NAME} =
 	mkdir -p "${REPO_PATH}"
 	git --git-dir="${REPO_PATH}/.git" init
 	(
+	  cd "${REPO_PATH}" || exit 255
+    configure_repo
 		echo ""
 	)
 	./config.sh -d "${REPO_PATH}"

@@ -2,7 +2,7 @@
 
 #	Automated Timestamping
 #
-#	Copyright (c) 2021 Johannes Milczewski
+#	Copyright (c) 2021 - 2022 Johannes Milczewski
 #
 #	Permission is hereby granted, free of charge, to any person obtaining a copy
 #	of this software and associated documentation files (the "Software"), to deal
@@ -110,13 +110,13 @@ function in_environment() {
 			echo 'Run "git config ts.branch.remote" to set the how remote and local signing branch are managed'
 			RETURN=$TS_ERROR_CONFIG_UNSET
 		elif [[ ${TS_BRANCH_REMOTE} != "default" && ${TS_BRANCH_REMOTE} != "merge" && ${TS_BRANCH_REMOTE} != "rebase" && ${TS_BRANCH_REMOTE} != "keep" ]]; then
-			echo 'ERROR: ts.branch.remote must be either "merge" or "rebase" or "keep"'
+			hook_error 'ERROR: ts.branch.remote must be either "merge" or "rebase" or "keep"'
 		fi
 		if ! TS_BRANCH_WITHHOLD=$(git config ts.branch.withhold); then
 			echo 'Run "git config ts.branch.withhold" to set whether timestamp commits should be withheld from remotes'
 			RETURN=$TS_ERROR_CONFIG_UNSET
 		elif [[ ${TS_BRANCH_WITHHOLD} != "true" && ${TS_BRANCH_WITHHOLD} != "false" ]]; then
-			echo 'ERROR: ts.branch.withhold must be either "true" or "false"'
+			hook_error 'ERROR: ts.branch.withhold must be either "true" or "false"'
 			RETURN $TS_ERROR_CONFIG_INVALID
 		fi
 
@@ -132,7 +132,7 @@ function in_environment() {
 			echo 'Run "git config ts.commit.relate" to set whether timestamp and actual commits should be merged afterwards'
 			RETURN=$TS_ERROR_CONFIG_UNSET
 		elif [[ ${TS_COMMIT_RELATE} != "true" && ${TS_COMMIT_RELATE} != "false" ]]; then
-			echo 'ERROR: ts.commit.relate must be either "true" or "false"'
+			hook_error 'ERROR: ts.commit.relate must be either "true" or "false"'
 			RETURN $TS_ERROR_CONFIG_INVALID
 		fi
 
@@ -148,7 +148,7 @@ function in_environment() {
 			echo 'run "git config ts.diff.type" to set how the diff is created'
 			RETURN=$TS_ERROR_CONFIG_UNSET
 		elif [[ ${TS_DIFF_TYPE} != "staged" && ${TS_DIFF_TYPE} != "full" ]]; then
-			echo 'ERROR: ts.diff.type must be either "staged" or "full"'
+			hook_error 'ERROR: ts.diff.type must be either "staged" or "full"'
 			RETURN $TS_ERROR_CONFIG_INVALID
 		fi
 
@@ -156,7 +156,7 @@ function in_environment() {
 			echo 'Run "git config ts.server.update" to set whether existing timestamps should be updated on TSA config changes'
 			RETURN=$TS_ERROR_CONFIG_UNSET
 		elif [[ ${TS_SERVER_UPDATE} != "true" && ${TS_SERVER_UPDATE} != "false" ]]; then
-			echo 'ERROR: ts.server.update must be either "true" or "false"'
+			hook_error 'ERROR: ts.server.update must be either "true" or "false"'
 			RETURN $TS_ERROR_CONFIG_INVALID
 		fi
 		if ! TS_SERVER_DIRECTORY=$(git config ts.server.directory); then
@@ -193,7 +193,7 @@ function in_environment() {
 			echo 'Run "git config ts.response.verify" to set whether the timestamp response file is verified after'
 			RETURN=$TS_ERROR_CONFIG_UNSET
 		elif [[ ${TS_RESPONSE_VERIFY} != "true" && ${TS_RESPONSE_VERIFY} != "false" ]]; then
-			echo 'ERROR: ts.response.verify must be either "true" or "false"'
+			hook_error 'ERROR: ts.response.verify must be either "true" or "false"'
 			RETURN $TS_ERROR_CONFIG_INVALID
 		fi
 
@@ -322,7 +322,7 @@ function verify_timestamp() {
 		-data "${DATA_FILE}" \
 		-CAfile "${SERVER_DIRECTORY}/${TS_SERVER_CERTIFICATE}" \
 		>/dev/null 2>/dev/null; then
-		return $TS_ERROR_VERIFY_REQUEST
+		return $TS_ERROR_VERIFY_DATA
 	fi
 
 	return $TS_OK
@@ -393,10 +393,10 @@ function create_timestamp() {
 		RESULT=$?
 		case "${RESULT}" in
 		"${TS_ERROR_VERIFY_REQUEST}")
-			hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against request!"
+			hook_error "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against request!"
 			;;
 		"${TS_ERROR_VERIFY_DATA}")
-			hook_echo "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against diff!"
+			hook_error "ERROR: Timestamp from ${SERVER_DIRECTORY} could not be verified against diff!"
 			;;
 		0) ;;
 		esac
@@ -490,7 +490,7 @@ function update_timestamps() {
 				SIG_COUNT=$((SIG_COUNT + 1))
 			else
 				ERR_COUNT=$((ERR_COUNT + 1))
-				hook_echo "ERROR: Could not create timestamp for ${d}"
+				hook_error "ERROR: Could not create timestamp for ${d}"
 			fi
 		done
 
@@ -525,6 +525,7 @@ function maybe_stash() {
 		git stash push >/dev/null 2>/dev/null && hook_echo "Stashing changes"
 		return $?
 	else
+	  hook_echo "Nothing to stash"
 		return 1
 	fi
 }
@@ -536,6 +537,8 @@ function maybe_unstash() {
 	if [[ $1 == 0 ]]; then
 		hook_echo "Unstashing changes"
 		git stash pop >/dev/null 2>/dev/null
+  else
+    hook_echo "Nothing to unstash"
 	fi
 }
 # endregion
@@ -809,7 +812,7 @@ function write_tsa_diff() {
 
 # region Commits
 
-# Adds the timestamping files to the staging area
+# Adds the timestamping files to the staging area^
 function add_ts_files() {
 	git add --force -- "${TS_DIFF_FILE}" "${TS_SERVER_DIRECTORY}/"*
 	return $?

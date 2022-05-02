@@ -2,7 +2,7 @@
 
 #	Automated Timestamping
 #
-#	Copyright (c) 2021 Johannes Milczewski
+#	Copyright (c) 2021 - 2022 Johannes Milczewski
 #
 #	Permission is hereby granted, free of charge, to any person obtaining a copy
 #	of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,11 @@
 function hook_echo() {
 	local TAG="commit-msg"
 	echo -e "[\e[0;32m${TAG}\e[0m]: $1"
+}
+
+function hook_error() {
+  local TAG="commit-msg"
+  echo -e "[\e[0;31m${TAG}\e[0m]: $1"
 }
 
 function ts-commit-msg_impl() {
